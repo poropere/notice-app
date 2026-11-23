@@ -2,10 +2,10 @@ name: 商品の発売チェック
 
 on:
   schedule:
-    # 5 分ごとに実行（GitHub の最短間隔。混雑で数分〜十数分遅れることがあります）
-    # 利用者が集中する 0分・5分ちょうどを避け、3分・8分・13分…に実行する
+    # 5 分ごとの実行は外部サービス（cron-job.org）から workflow_dispatch で起動しています。
+    # GitHub の定期実行は遅れや取りこぼしが多いため、1 時間に 1 回の予備としてだけ残しています。
     # 間隔の長い商品（interval_minutes）は monitor.py 側で間引いています
-    - cron: "3-59/5 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       mode:
