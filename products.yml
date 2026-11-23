@@ -108,6 +108,7 @@ products:
     url: https://online.apitashop.com/Form/Product/ProductList.aspx?cat=200220095
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
+    message: 抽選販売のページに山崎・白州が載りました。応募期間を確認してください。
 
   - name: 【抽選】イトーヨーカドー 山崎・白州
     type: page
@@ -115,6 +116,7 @@ products:
     url: https://iyec.itoyokado.co.jp/shop/e/eE4reslot/   # 受付中の予約・抽選の一覧
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
+    message: 受付中の抽選一覧に山崎・白州が載りました。応募条件と期間を確認してください。
 
   - name: 【抽選】東急百貨店 山崎・白州
     type: page
@@ -122,6 +124,7 @@ products:
     url: https://online.tokyu-dept.co.jp/cp/?fkey=lottery_sale
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
+    enabled: false   # 受付中/終了の表示が JavaScript で切り替わるため、文字では判定できない
 
   # その他のサイトは site: custom で、判定に使う文言を自分で指定します。
   # - name: メーカー直販サイトの商品

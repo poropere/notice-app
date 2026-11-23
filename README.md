@@ -162,6 +162,7 @@ Yahoo の API には「新着順」の並び替えがないため、検索結果
 | `url` | ✅ | ✅ | ✅ | | | 監視する商品ページ |
 | `site` | ✅ | ✅ | ✅ | | | `amazon` / `rakuten` / `custom`（省略時は `custom`） |
 | `open_url` | ○ | ○ | ○ | | | 通知をタップしたときに開く URL |
+| `message` | ○ | ○ | ○ | | | 通知の本文（省略時は「購入できる状態になりました…」） |
 | `available_selectors` | ○ | ○ | △ | | | この要素（CSS セレクター）があれば購入可能 |
 | `available_keywords` | ○ | ○ | △ | | | この文字があれば購入可能 |
 | `unavailable_keywords` | ○ | ○ | ○ | | | この文字があれば購入不可（最優先） |

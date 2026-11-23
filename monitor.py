@@ -134,7 +134,7 @@ CAPTCHA_MARKERS = [
 COMMON_KEYS = {"name", "type", "enabled", "interval_minutes"}
 ALLOWED_KEYS = {
     "page": COMMON_KEYS | {
-        "url", "site", "open_url",
+        "url", "site", "open_url", "message",
         "available_selectors", "available_keywords", "unavailable_keywords",
         "price_selectors", "seller_selectors", "max_price", "seller_keywords",
     },
@@ -393,7 +393,8 @@ def check_page(product: dict, state: dict, dry_run: bool) -> None:
           f"（{price_text}{detail} / 前回: {prev}）")
 
     if available and prev is not True:
-        message = "購入できる状態になりました。タップして商品ページを開けます。"
+        message = (product.get("message")
+                   or "購入できる状態になりました。タップして商品ページを開けます。")
         if "price" in info:
             message = f"価格: {info['price']:,}円\n" + message
         notify(
