@@ -39,6 +39,7 @@ products:
     site: amazon
     url: https://www.amazon.co.jp/dp/B00384EZHE
     max_price: 18000
+    enabled: false   # GitHub からはボット対策で毎回止められるため停止中
 
   - name: 【Yahoo】山崎12年      # 必須。通知のタイトルになる。重複不可
     type: yahoo_search                     # 必須
@@ -59,6 +60,67 @@ products:
     keyword: ユニオンアリーナ D.Gray-man    # 必須。スペース区切りで AND 検索
     min_price: 3000                       # 3万円以上（アクセサリー類を除く）
     max_price: 5500                       # 8万円以下（転売の高額品を除く）
+
+  # ── 山崎・白州：定価近くの出品を Yahoo!ショッピングで探す ──
+  # 定価（2026年4月改定後・税込）: 山崎/白州 NV 8,250円、12年 17,600円
+
+  - name: 【Yahoo】山崎 NV
+    type: yahoo_search
+    keyword: 山崎 700ml
+    must_include: 山崎
+    ng_keyword: 12年 18年 25年 白州 響 180ml 50ml ミニ 空瓶 グラス セット
+    min_price: 7500
+    max_price: 9500
+    interval_minutes: 10
+
+  - name: 【Yahoo】白州 NV
+    type: yahoo_search
+    keyword: 白州 700ml
+    must_include: 白州
+    ng_keyword: 12年 18年 25年 山崎 響 180ml 50ml ミニ 空瓶 グラス セット
+    min_price: 7500
+    max_price: 9500
+    interval_minutes: 10
+
+  - name: 【Yahoo】白州12年
+    type: yahoo_search
+    keyword: 白州 12年
+    must_include: 白州 12年
+    ng_keyword: 山崎 響 180ml 50ml ミニ 空瓶 グラス
+    min_price: 16000
+    max_price: 18500
+    interval_minutes: 10
+
+  # ── 山崎・白州：通販の抽選ページを見張る ──
+  # ページに「山崎」か「白州」が載ったら（＝抽選・販売の受付が始まったら）通知します。
+
+  - name: 【抽選】ビックカメラ.com 山崎・白州
+    type: page
+    site: custom
+    url: https://www.biccamera.com/bc/c/sale/special/fukubako/index.html
+    available_keywords: ["山崎", "白州"]
+    interval_minutes: 30
+
+  - name: 【抽選】アピタ・ピアゴ 山崎・白州
+    type: page
+    site: custom
+    url: https://online.apitashop.com/Form/Product/ProductList.aspx?cat=200220095
+    available_keywords: ["山崎", "白州"]
+    interval_minutes: 30
+
+  - name: 【抽選】イトーヨーカドー 山崎・白州
+    type: page
+    site: custom
+    url: https://iyec.itoyokado.co.jp/shop/pages/apply_RLlottery.aspx
+    available_keywords: ["山崎", "白州"]
+    interval_minutes: 30
+
+  - name: 【抽選】東急百貨店 山崎・白州
+    type: page
+    site: custom
+    url: https://online.tokyu-dept.co.jp/cp/?fkey=lottery_sale
+    available_keywords: ["山崎", "白州"]
+    interval_minutes: 30
 
   # その他のサイトは site: custom で、判定に使う文言を自分で指定します。
   # - name: メーカー直販サイトの商品
