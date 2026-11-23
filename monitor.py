@@ -355,6 +355,13 @@ def check_page(product: dict, state: dict, dry_run: bool) -> None:
         print(f"  取得失敗のためスキップ: {e}")
         return
 
+    if dry_run:
+        # 本物の商品ページか、ボット対策の画面かを見分けるための手がかり
+        title_tag = BeautifulSoup(resp.text, "html.parser").title
+        title = title_tag.get_text(strip=True) if title_tag else "(タイトルなし)"
+        print(f"  [dry-run] HTTP {resp.status_code} / {len(resp.text):,} 文字 / "
+              f"最終URL: {resp.url} / タイトル: {title[:60]}")
+
     available, info = judge_page(resp.text, rule, product)
     if available is None:
         print("  ボット判定ページが返されたため、今回は判定をスキップします")
@@ -479,7 +486,8 @@ def search_yahoo(product: dict) -> list[dict]:
     resp = requests.get(
         YAHOO_ENDPOINT,
         params=params,
-        headers={"User-Agent": f"Yahoo AppID: {app_id}"},
+        # appid はクエリーで渡す（User-Agent にも入れると 401 "conflicted" になる）
+        headers={"User-Agent": "product-release-notifier/1.0"},
         timeout=30,
     )
     if resp.status_code == 429:
