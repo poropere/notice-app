@@ -1,0 +1,486 @@
+"""注目商品の発売・在庫復活を監視して、ntfy 経由で iPhone に通知するスクリプト。
+
+使い方:
+    python monitor.py            # 監視を実行（変化があれば通知し、state.json を更新）
+    python monitor.py --dry-run  # 判定結果を表示するだけ（通知も保存もしない）
+    python monitor.py --test     # テスト通知を 1 件送る
+
+環境変数:
+    NTFY_TOPIC          通知先の ntfy トピック名（必須）
+    NTFY_SERVER         ntfy サーバー（省略時 https://ntfy.sh）
+    RAKUTEN_APP_ID      楽天ウェブサービスのアプリID（rakuten_search を使う場合）
+    RAKUTEN_ACCESS_KEY  楽天ウェブサービスのアクセスキー（発行されている場合）
+    RAKUTEN_ENDPOINT    楽天 商品検索API の URL（省略時は下記 DEFAULT_RAKUTEN_ENDPOINT）
+    RAKUTEN_REFERER     楽天アプリ登録時の URL（403 になる場合に設定）
+    YAHOO_APP_ID        Yahoo!デベロッパーネットワークの Client ID（yahoo_search を使う場合）
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+import requests
+import yaml
+from bs4 import BeautifulSoup
+
+BASE_DIR = Path(__file__).resolve().parent
+PRODUCTS_FILE = BASE_DIR / "products.yml"
+STATE_FILE = BASE_DIR / "state.json"
+
+DEFAULT_RAKUTEN_ENDPOINT = (
+    "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601"
+)
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+)
+
+# サイトごとの「購入できる状態」の判定ルール。products.yml で上書きできる。
+SITE_PRESETS = {
+    "amazon": {
+        # カート・予約・今すぐ買うボタンがあれば購入可能とみなす
+        "available_selectors": [
+            "#add-to-cart-button",
+            "#buy-now-button",
+            "#add-to-cart-button-ubb",
+        ],
+        "available_keywords": [],
+        "unavailable_keywords": [],
+    },
+    "rakuten": {
+        "available_selectors": [],
+        "available_keywords": ["かごに追加", "買い物かごに入れる", "予約する"],
+        "unavailable_keywords": ["売り切れました", "販売期間外", "在庫切れ"],
+    },
+    "custom": {
+        "available_selectors": [],
+        "available_keywords": [],
+        "unavailable_keywords": [],
+    },
+}
+
+# 確認間隔（分）。ワークフローの実行間隔（5 分）が最短。
+# products.yml で商品ごとに interval_minutes を指定すると上書きできる。
+DEFAULT_INTERVAL_MINUTES = 5
+SITE_INTERVAL_MINUTES = {
+    "amazon": 30,  # ボット対策が厳しいため、アクセスを控えめにする
+}
+# GitHub の定期実行は数分ずれることがあるため、その分の余裕を持たせる
+INTERVAL_TOLERANCE_SECONDS = 120
+
+
+def check_interval(product: dict) -> int:
+    if product.get("interval_minutes"):
+        return max(int(product["interval_minutes"]), DEFAULT_INTERVAL_MINUTES)
+    if product.get("type", "page") == "page":
+        return SITE_INTERVAL_MINUTES.get(product.get("site", "custom"),
+                                         DEFAULT_INTERVAL_MINUTES)
+    return DEFAULT_INTERVAL_MINUTES
+
+
+# ボット判定（CAPTCHA）ページの目印。これが出たら判定不能として状態を変えない。
+CAPTCHA_MARKERS = [
+    "validateCaptcha",
+    "ロボットではないことを確認",
+    "文字を入力してください",
+    "Enter the characters you see below",
+    "api-services-support@amazon.com",
+]
+
+
+# --------------------------------------------------------------------------
+# 設定・状態の読み書き
+# --------------------------------------------------------------------------
+
+def load_products() -> list[dict]:
+    with PRODUCTS_FILE.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    products = data.get("products") or []
+    for p in products:
+        if not p.get("name"):
+            raise ValueError(f"name がない商品があります: {p}")
+    return [p for p in products if p.get("enabled", True)]
+
+
+def load_state() -> dict:
+    if STATE_FILE.exists():
+        with STATE_FILE.open(encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_state(state: dict) -> None:
+    with STATE_FILE.open("w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+# --------------------------------------------------------------------------
+# 通知
+# --------------------------------------------------------------------------
+
+def notify(title: str, message: str, click_url: str | None = None,
+           tags: list[str] | None = None, dry_run: bool = False) -> None:
+    if dry_run:
+        print(f"  [通知(dry-run)] {title} / {message}")
+        return
+
+    topic = os.environ.get("NTFY_TOPIC")
+    if not topic:
+        raise RuntimeError("環境変数 NTFY_TOPIC が設定されていません")
+    server = (os.environ.get("NTFY_SERVER") or "https://ntfy.sh").rstrip("/")
+
+    # JSON で送ると日本語のタイトルも文字化けしない
+    payload = {
+        "topic": topic,
+        "title": title,
+        "message": message,
+        "priority": 4,
+        "tags": tags or ["shopping_cart"],
+    }
+    if click_url:
+        payload["click"] = click_url
+        payload["actions"] = [
+            {"action": "view", "label": "商品ページを開く", "url": click_url}
+        ]
+
+    resp = requests.post(server, json=payload, timeout=20)
+    resp.raise_for_status()
+    print(f"  [通知送信] {title}")
+
+
+# --------------------------------------------------------------------------
+# 商品ページの監視（Amazon / 楽天 / その他）
+# --------------------------------------------------------------------------
+
+def build_rule(product: dict) -> dict:
+    site = product.get("site", "custom")
+    if site not in SITE_PRESETS:
+        raise ValueError(f"{product['name']}: 未対応の site です: {site}")
+    rule = dict(SITE_PRESETS[site])
+    for key in ("available_selectors", "available_keywords", "unavailable_keywords"):
+        if key in product:
+            rule[key] = product[key] or []
+    if not rule["available_selectors"] and not rule["available_keywords"]:
+        raise ValueError(
+            f"{product['name']}: available_selectors か available_keywords を指定してください"
+        )
+    return rule
+
+
+def judge_page(html: str, rule: dict) -> bool | None:
+    """購入可能なら True、不可なら False、判定不能なら None。"""
+    if any(marker in html for marker in CAPTCHA_MARKERS):
+        return None
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(" ", strip=True)
+
+    if any(k in text for k in rule["unavailable_keywords"]):
+        return False
+    if any(soup.select_one(sel) for sel in rule["available_selectors"]):
+        return True
+    if any(k in text for k in rule["available_keywords"]):
+        return True
+    return False
+
+
+def check_page(product: dict, state: dict, dry_run: bool) -> None:
+    name = product["name"]
+    url = product["url"]
+    rule = build_rule(product)
+
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept-Language": "ja-JP,ja;q=0.9",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"  取得失敗のためスキップ: {e}")
+        return
+
+    available = judge_page(resp.text, rule)
+    if available is None:
+        print("  ボット判定ページが返されたため、今回は判定をスキップします")
+        return
+
+    prev = state.get(name, {}).get("available")
+    print(f"  判定: {'購入可能' if available else '購入不可'}（前回: {prev}）")
+
+    if available and prev is not True:
+        notify(
+            title=f"発売・入荷: {name}",
+            message="購入できる状態になりました。タップして商品ページを開けます。",
+            # open_url を指定すると、監視する URL とは別の URL（アプリ用など）を開く
+            click_url=product.get("open_url") or url,
+            tags=["tada", "shopping_cart"],
+            dry_run=dry_run,
+        )
+
+    # 状態が変わったときだけ state.json が更新される（無駄なコミットを防ぐ）
+    state[name] = {"available": available}
+
+
+# --------------------------------------------------------------------------
+# 楽天 商品検索API による新着監視（まだ商品ページがない予定品向け）
+# --------------------------------------------------------------------------
+
+def search_rakuten(product: dict) -> list[dict]:
+    app_id = os.environ.get("RAKUTEN_APP_ID")
+    if not app_id:
+        raise RuntimeError("環境変数 RAKUTEN_APP_ID が設定されていません")
+
+    params = {
+        "applicationId": app_id,
+        "keyword": product["keyword"],
+        "availability": 1,          # 購入可能な商品のみ
+        "sort": "-updateTimestamp",  # 更新が新しい順
+        "hits": 30,
+        "formatVersion": 2,
+        "format": "json",
+    }
+    access_key = os.environ.get("RAKUTEN_ACCESS_KEY")
+    if access_key:
+        params["accessKey"] = access_key
+    for src, dst in (("ng_keyword", "ngKeyword"),
+                     ("min_price", "minPrice"),
+                     ("max_price", "maxPrice")):
+        if product.get(src) is not None:
+            params[dst] = product[src]
+
+    headers = {"User-Agent": "product-release-notifier/1.0"}
+    referer = os.environ.get("RAKUTEN_REFERER")
+    if referer:
+        headers["Referer"] = referer
+        headers["Origin"] = referer.rstrip("/")
+
+    # 未設定の Secret は空文字で渡されるため `or` で既定値にする
+    endpoint = os.environ.get("RAKUTEN_ENDPOINT") or DEFAULT_RAKUTEN_ENDPOINT
+    resp = requests.get(endpoint, params=params, headers=headers, timeout=30)
+    if resp.status_code != 200:
+        raise RuntimeError(f"楽天API エラー {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    items = data.get("Items") or data.get("items") or []
+    # formatVersion=1 の形式（{"Item": {...}}）にも対応しておく
+    return [i.get("Item", i) for i in items]
+
+
+def check_rakuten_search(product: dict, state: dict, dry_run: bool) -> None:
+    try:
+        raw = search_rakuten(product)
+    except Exception as e:  # noqa: BLE001
+        print(f"  検索失敗のためスキップ: {e}")
+        return
+    items = [
+        {
+            "code": i.get("itemCode"),
+            "name": i.get("itemName", ""),
+            "price": i.get("itemPrice"),
+            "url": i.get("itemUrl"),
+            "shop": i.get("shopName", ""),
+        }
+        for i in raw
+    ]
+    check_new_items(product, state, items, "楽天", dry_run)
+
+
+# --------------------------------------------------------------------------
+# Yahoo!ショッピング 商品検索API（v3）による新着監視
+# --------------------------------------------------------------------------
+
+YAHOO_ENDPOINT = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
+
+
+def search_yahoo(product: dict) -> list[dict]:
+    app_id = os.environ.get("YAHOO_APP_ID")
+    if not app_id:
+        raise RuntimeError("環境変数 YAHOO_APP_ID が設定されていません")
+
+    params = {
+        "appid": app_id,
+        "query": product["keyword"],
+        "results": 50,
+        "in_stock": "true",  # 在庫ありのみ
+    }
+    # 既定は新品のみ。condition: any で新品・中古の両方を対象にする
+    condition = product.get("condition", "new")
+    if condition in ("new", "used"):
+        params["condition"] = condition
+    if product.get("preorder"):
+        params["preorder"] = "true"  # 予約商品のみ
+    if product.get("min_price") is not None:
+        params["price_from"] = product["min_price"]
+    if product.get("max_price") is not None:
+        params["price_to"] = product["max_price"]
+
+    resp = requests.get(
+        YAHOO_ENDPOINT,
+        params=params,
+        headers={"User-Agent": f"Yahoo AppID: {app_id}"},
+        timeout=30,
+    )
+    if resp.status_code == 429:
+        raise RuntimeError("Yahoo API の利用制限中です（429）。しばらく待つと解除されます")
+    if resp.status_code != 200:
+        raise RuntimeError(f"Yahoo API エラー {resp.status_code}: {resp.text[:300]}")
+
+    hits = resp.json().get("hits") or []
+    return [
+        {
+            "code": h.get("code"),
+            "name": h.get("name", ""),
+            "price": h.get("price"),
+            "url": h.get("url"),
+            "shop": (h.get("seller") or {}).get("name", ""),
+        }
+        for h in hits
+    ]
+
+
+def check_yahoo_search(product: dict, state: dict, dry_run: bool) -> None:
+    try:
+        items = search_yahoo(product)
+    except Exception as e:  # noqa: BLE001
+        print(f"  検索失敗のためスキップ: {e}")
+        return
+    check_new_items(product, state, items, "Yahoo!ショッピング", dry_run)
+
+
+# --------------------------------------------------------------------------
+# 検索結果の新着判定（楽天・Yahoo 共通）
+# --------------------------------------------------------------------------
+
+def check_new_items(product: dict, state: dict, items: list[dict],
+                    site_label: str, dry_run: bool) -> None:
+    """items は {code, name, price, url, shop} の形にそろえたもの。"""
+    name = product["name"]
+
+    must_words = product.get("must_include") or []
+    if must_words:
+        items = [i for i in items if all(w in i["name"] for w in must_words)]
+    ng_words = str(product.get("ng_keyword") or "").split()
+    if ng_words:
+        items = [i for i in items if not any(w in i["name"] for w in ng_words)]
+    items = [i for i in items if i.get("code")]
+
+    entry = state.get(name, {})
+    seen = set(entry.get("seen", []))
+    first_run = not entry.get("initialized")
+    new_items = [i for i in items if i["code"] not in seen]
+    print(f"  ヒット {len(items)} 件 / 新着 {len(new_items)} 件")
+
+    if first_run:
+        notify(
+            title=f"監視開始: {name}",
+            message=(
+                f"{site_label}で現在 {len(items)} 件ヒットしています。"
+                "今後、新しく出品された商品を通知します。"
+            ),
+            tags=["eyes"],
+            dry_run=dry_run,
+        )
+    else:
+        for item in new_items[:5]:
+            price = item.get("price")
+            price_text = f"{price:,}円" if isinstance(price, int) else ""
+            notify(
+                title=f"{site_label}に新着: {name}",
+                message=f"{item['name'][:80]}\n{price_text} / {item.get('shop', '')}",
+                click_url=item.get("url"),
+                tags=["new", "shopping_cart"],
+                dry_run=dry_run,
+            )
+        if len(new_items) > 5:
+            notify(
+                title=f"{site_label}に新着: {name}",
+                message=f"ほかにも {len(new_items) - 5} 件の新着があります。",
+                dry_run=dry_run,
+            )
+
+    seen.update(i["code"] for i in items)
+    state[name] = {
+        "initialized": True,
+        "seen": sorted(seen)[-500:],
+    }
+
+
+# --------------------------------------------------------------------------
+# メイン
+# --------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="注目商品の発売通知")
+    parser.add_argument("--dry-run", action="store_true", help="通知・保存をしない")
+    parser.add_argument("--test", action="store_true", help="テスト通知を送る")
+    parser.add_argument("--url", help="テスト通知をタップしたときに開く URL")
+    args = parser.parse_args()
+
+    if args.test:
+        if args.url:
+            message = "タップして、指定した URL がどのように開くか確認してください。"
+        else:
+            message = "iPhone に届いていれば設定完了です。"
+        notify("テスト通知", message, click_url=args.url or None,
+               tags=["white_check_mark"])
+        return 0
+
+    products = load_products()
+    state = load_state()
+
+    now = time.time()
+    for product in products:
+        name = product["name"]
+        kind = product.get("type", "page")
+        interval = check_interval(product)
+        print(f"■ {name}（{kind} / {interval}分おき）")
+
+        # ワークフローは 5 分ごとに動くので、間隔の長い商品は前回から時間が経つまで飛ばす
+        last = state.get(name, {}).get("last_checked", 0)
+        if (not args.dry_run and interval > DEFAULT_INTERVAL_MINUTES
+                and now - last < interval * 60 - INTERVAL_TOLERANCE_SECONDS):
+            print(f"  スキップ（前回の確認から {int((now - last) / 60)} 分）")
+            continue
+
+        try:
+            if kind == "page":
+                check_page(product, state, args.dry_run)
+            elif kind == "rakuten_search":
+                check_rakuten_search(product, state, args.dry_run)
+            elif kind == "yahoo_search":
+                check_yahoo_search(product, state, args.dry_run)
+            else:
+                print(f"  未対応の type です: {kind}")
+        except Exception as e:  # noqa: BLE001  1 商品の失敗で全体を止めない
+            print(f"  エラー: {e}")
+
+        # 取得失敗・ボット判定でも「確認した」扱いにして、すぐに再アクセスしない
+        if interval > DEFAULT_INTERVAL_MINUTES:
+            state.setdefault(name, {})["last_checked"] = int(now)
+
+        # サイトに負荷をかけないよう間隔を空ける（楽天・Yahoo の API は 1 秒 1 回まで）
+        time.sleep(2)
+
+    # 削除された商品の状態は捨てる
+    names = {p["name"] for p in products}
+    state = {k: v for k, v in state.items() if k in names}
+
+    if not args.dry_run:
+        save_state(state)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

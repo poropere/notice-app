@@ -1,0 +1,68 @@
+# 監視したい商品の一覧です。ここを編集して商品を追加・削除します。
+# 編集したら GitHub に保存（コミット）するだけで、次回の監視から反映されます。
+#
+# ── 書き方は 3 種類 ──────────────────────────────────────
+#
+# 1) type: page
+#    すでに商品ページがあるもの（予約開始前・在庫切れなど）を監視し、
+#    「カートに入れる」などが表示されて購入できるようになったら通知します。
+#      site: amazon / rakuten / custom
+#      url:  商品ページの URL
+#
+# 2) type: rakuten_search
+#    まだ商品ページがない発売予定品を、楽天の商品検索API で探し、
+#    新しく出品されたら通知します（RAKUTEN_APP_ID の設定が必要）。
+#      keyword:      検索キーワード（スペース区切りで AND 検索）
+#      must_include: 商品名に必ず含まれるべき語（任意）
+#      ng_keyword:   除外したい語（任意。中古、ケース など）
+#      min_price / max_price: 価格の範囲（任意）
+#
+# 3) type: yahoo_search
+#    Yahoo!ショッピングの商品検索API で探し、新しく出品されたら通知します
+#    （YAHOO_APP_ID の設定が必要）。書き方は rakuten_search と同じで、さらに
+#      preorder:  true にすると予約商品だけを対象にする（任意）
+#      condition: new（既定・新品のみ） / used（中古のみ） / any（両方）
+#
+# type: page では open_url を付けると、通知をタップしたときに
+# 監視している URL ではなく、その URL を開きます（アプリで開く URL など）。
+#
+# 確認間隔は 5 分おき（Amazon の商品ページだけは 30 分おき）です。
+# 商品ごとに変えたいときは interval_minutes: 15 のように指定します（最短 5）。
+#
+# 一時的に止めたい商品は enabled: false を付けます。
+# ────────────────────────────────────────────────
+
+products:
+  # ↓ 例です。自分の商品に書き換えてください。
+
+  - name: 例）Amazonで予約開始を待っている商品
+    type: page
+    site: amazon
+    url: https://www.amazon.co.jp/dp/XXXXXXXXXX
+    enabled: false   # URL を書き換えたらこの行を削除
+
+  - name: 例）楽天の在庫切れ商品
+    type: page
+    site: rakuten
+    url: https://item.rakuten.co.jp/shop-name/item-code/
+    enabled: false   # URL を書き換えたらこの行を削除
+
+  - name: 例）楽天で発売予定品の出品を探す
+    type: rakuten_search
+    keyword: 商品名 型番
+    ng_keyword: 中古 ケース フィルム
+    enabled: false   # キーワードを書き換えたらこの行を削除
+
+  - name: 例）Yahoo!ショッピングで発売予定品の出品を探す
+    type: yahoo_search
+    keyword: 商品名 型番
+    ng_keyword: ケース フィルム
+    enabled: false   # キーワードを書き換えたらこの行を削除
+
+  # その他のサイトは site: custom で、判定に使う文言を自分で指定します。
+  # - name: メーカー直販サイトの商品
+  #   type: page
+  #   site: custom
+  #   url: https://example.com/products/123
+  #   available_keywords: ["カートに入れる"]
+  #   unavailable_keywords: ["SOLD OUT", "近日発売"]
