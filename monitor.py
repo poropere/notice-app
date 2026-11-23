@@ -98,13 +98,61 @@ CAPTCHA_MARKERS = [
 # 設定・状態の読み書き
 # --------------------------------------------------------------------------
 
+# type ごとに使えるプロパティ。これ以外を書くと警告を出す（書き間違いに気づけるように）。
+COMMON_KEYS = {"name", "type", "enabled", "interval_minutes"}
+ALLOWED_KEYS = {
+    "page": COMMON_KEYS | {
+        "url", "site", "open_url",
+        "available_selectors", "available_keywords", "unavailable_keywords",
+    },
+    "rakuten_search": COMMON_KEYS | {
+        "keyword", "must_include", "ng_keyword", "min_price", "max_price",
+    },
+    "yahoo_search": COMMON_KEYS | {
+        "keyword", "must_include", "ng_keyword", "min_price", "max_price",
+        "preorder", "condition",
+    },
+}
+REQUIRED_KEYS = {
+    "page": {"url"},
+    "rakuten_search": {"keyword"},
+    "yahoo_search": {"keyword"},
+}
+
+
+def as_list(value, split_spaces: bool = False) -> list[str]:
+    """リストでも文字列でも書けるようにそろえる。"""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return value.split() if split_spaces else [value]
+    return [str(v) for v in value]
+
+
 def load_products() -> list[dict]:
     with PRODUCTS_FILE.open(encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     products = data.get("products") or []
+
+    names = set()
     for p in products:
         if not p.get("name"):
             raise ValueError(f"name がない商品があります: {p}")
+        if p["name"] in names:
+            raise ValueError(f"name が重複しています: {p['name']}")
+        names.add(p["name"])
+
+        kind = p.get("type", "page")
+        if kind not in ALLOWED_KEYS:
+            continue  # main() で「未対応の type」として表示する
+        unknown = set(p) - ALLOWED_KEYS[kind]
+        if unknown:
+            print(f"⚠ {p['name']}: type: {kind} では使えない項目があります"
+                  f"（無視します）: {', '.join(sorted(unknown))}")
+        missing = REQUIRED_KEYS[kind] - set(p)
+        if missing:
+            print(f"⚠ {p['name']}: 必須の項目がありません: {', '.join(sorted(missing))}")
+
     return [p for p in products if p.get("enabled", True)]
 
 
@@ -166,7 +214,7 @@ def build_rule(product: dict) -> dict:
     rule = dict(SITE_PRESETS[site])
     for key in ("available_selectors", "available_keywords", "unavailable_keywords"):
         if key in product:
-            rule[key] = product[key] or []
+            rule[key] = as_list(product[key])
     if not rule["available_selectors"] and not rule["available_keywords"]:
         raise ValueError(
             f"{product['name']}: available_selectors か available_keywords を指定してください"
@@ -255,9 +303,10 @@ def search_rakuten(product: dict) -> list[dict]:
     access_key = os.environ.get("RAKUTEN_ACCESS_KEY")
     if access_key:
         params["accessKey"] = access_key
-    for src, dst in (("ng_keyword", "ngKeyword"),
-                     ("min_price", "minPrice"),
-                     ("max_price", "maxPrice")):
+    ng_words = as_list(product.get("ng_keyword"), split_spaces=True)
+    if ng_words:
+        params["ngKeyword"] = " ".join(ng_words)
+    for src, dst in (("min_price", "minPrice"), ("max_price", "maxPrice")):
         if product.get(src) is not None:
             params[dst] = product[src]
 
@@ -368,10 +417,11 @@ def check_new_items(product: dict, state: dict, items: list[dict],
     """items は {code, name, price, url, shop} の形にそろえたもの。"""
     name = product["name"]
 
-    must_words = product.get("must_include") or []
+    # どちらも「リスト」でも「スペース区切りの文字列」でも書ける
+    must_words = as_list(product.get("must_include"), split_spaces=True)
     if must_words:
         items = [i for i in items if all(w in i["name"] for w in must_words)]
-    ng_words = str(product.get("ng_keyword") or "").split()
+    ng_words = as_list(product.get("ng_keyword"), split_spaces=True)
     if ng_words:
         items = [i for i in items if not any(w in i["name"] for w in ng_words)]
     items = [i for i in items if i.get("code")]

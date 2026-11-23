@@ -123,6 +123,39 @@ Yahoo の API には「新着順」の並び替えがないため、検索結果
    ログに `楽天API エラー` が出る場合は、管理画面やドキュメントに記載されている **商品検索API の URL** を確認し、
    Secrets に `RAKUTEN_ENDPOINT` として登録してください。
 
+### 使えるプロパティ一覧
+
+**全タイプ共通**
+
+| プロパティ | 必須 | 内容 |
+|---|---|---|
+| `name` | ✅ | 商品の名前（通知のタイトルになります。重複不可） |
+| `type` | | `page` / `rakuten_search` / `yahoo_search`（省略時は `page`） |
+| `enabled` | | `false` にすると監視を止める |
+| `interval_minutes` | | 確認間隔（分）。最短 5。省略時は 5（Amazon のページだけ 30） |
+
+**タイプ別**（✅ 必須　○ 任意　△ custom ではどちらか一方が必須　空欄 = 使えない）
+
+| プロパティ | page (amazon) | page (rakuten) | page (custom) | rakuten_search | yahoo_search | 内容 |
+|---|:-:|:-:|:-:|:-:|:-:|---|
+| `url` | ✅ | ✅ | ✅ | | | 監視する商品ページ |
+| `site` | ✅ | ✅ | ✅ | | | `amazon` / `rakuten` / `custom`（省略時は `custom`） |
+| `open_url` | ○ | ○ | ○ | | | 通知をタップしたときに開く URL |
+| `available_selectors` | ○ | ○ | △ | | | この要素（CSS セレクター）があれば購入可能 |
+| `available_keywords` | ○ | ○ | △ | | | この文字があれば購入可能 |
+| `unavailable_keywords` | ○ | ○ | ○ | | | この文字があれば購入不可（最優先） |
+| `keyword` | | | | ✅ | ✅ | 検索キーワード（スペース区切りで AND） |
+| `must_include` | | | | ○ | ○ | 商品名に必ず含まれるべき語 |
+| `ng_keyword` | | | | ○ | ○ | 商品名に含まれていたら除外する語 |
+| `min_price` / `max_price` | | | | ○ | ○ | 価格の範囲（円） |
+| `preorder` | | | | | ○ | `true` で予約商品のみ |
+| `condition` | | | | | ○ | `new`（既定） / `used` / `any` |
+
+- `page (amazon)` / `page (rakuten)` の判定ルールは最初から設定済みです。`available_*` / `unavailable_keywords` を書くと、その項目だけ上書きされます。
+- 複数の語を書く項目は、`["A", "B"]` のリスト形式でも、`A B` のスペース区切りでも書けます
+  （`available_keywords` などページ用の項目は、スペースを含む 1 つの語として扱われます）。
+- 使えない項目を書いた場合は、実行ログに「⚠ … 使えない項目があります」と表示されます。
+
 ---
 
 ## 通知をタップしたときの動き
