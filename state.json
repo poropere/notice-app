@@ -1,11 +1,86 @@
 {
-  "【Amazon】山崎12年": {
-    "last_checked": 1795432069
+  "【Yahoo】ポケカ ハドウシーカー BOX": {
+    "initialized": true,
+    "seen": [
+      "shijimi-ya_pokemon-card-0013p-15p-2611"
+    ]
+  },
+  "【Yahoo】ユニアリ D.Gray-man": {
+    "initialized": true,
+    "seen": []
+  },
+  "【Yahoo】ワンピースカード ブースターパック BOX": {
+    "initialized": true,
+    "seen": [
+      "lead-netstore_op18212611ttp022"
+    ]
+  },
+  "【Yahoo】山崎 NV": {
+    "initialized": true,
+    "last_checked": 1795438808,
+    "seen": [
+      "cellar-house_181834",
+      "sake-super-dry_wkj-1115",
+      "sake-super-dry_wkj-1118"
+    ]
   },
   "【Yahoo】山崎12年": {
-    "last_checked": 1795432069
+    "initialized": true,
+    "last_checked": 1795438808,
+    "seen": [
+      "1147kodawaru_mhbw486",
+      "esdigital_10899295",
+      "felista_hpbr-3181",
+      "felista_hpbr-3293",
+      "good-v_4210090002",
+      "good-v_4212081032",
+      "good-v_4216090239",
+      "good-v_4225100288",
+      "good-v_4226060202",
+      "kaumall_32689280",
+      "kaumall_42677680",
+      "monoichi_hpbr-3181",
+      "monoichi_hpbr-3293",
+      "namasake_aramasa05",
+      "shinsostore2_1220a3",
+      "shinsostore2_ze4njz4usu",
+      "surprise-flower_hpbr-3181",
+      "surprise-flower_hpbr-3293",
+      "surprise-flower_hpbr-3293-p12",
+      "surprise-flower_pcbc-61760",
+      "surpriseweb_hpbr-3181",
+      "surpriseweb_hpbr-3293",
+      "surpriseweb_hpbr-3293-p12",
+      "tutuigura_tutui202409192"
+    ]
   },
   "【Yahoo】山崎18年": {
-    "last_checked": 1795432069
+    "initialized": true,
+    "last_checked": 1795438808,
+    "seen": []
+  },
+  "【Yahoo】白州 NV": {
+    "initialized": true,
+    "last_checked": 1795438808,
+    "seen": [
+      "furusatochoice_6810465",
+      "furusatochoice_6810467",
+      "furusatochoice_7196470",
+      "sake-super-dry_wkj-1116",
+      "sake-super-dry_wkj-1117"
+    ]
+  },
+  "【Yahoo】白州12年": {
+    "initialized": true,
+    "last_checked": 1795438808,
+    "seen": []
+  },
+  "【抽選】アピタ・ピアゴ 山崎・白州": {
+    "available": true,
+    "last_checked": 1795438808
+  },
+  "【抽選】イトーヨーカドー 山崎・白州": {
+    "available": false,
+    "last_checked": 1795438808
   }
 }
