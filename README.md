@@ -79,6 +79,27 @@ iPhone の Safari から GitHub を開いて編集することもできます。
 「カートに入れる」「予約注文する」などのボタンが表示されたら通知します。
 Amazon の URL は `https://www.amazon.co.jp/dp/商品コード` の短い形にすると確実です。
 
+### 定価のときだけ通知する（転売対策）
+
+Amazon では 1 つの商品ページに複数の人が出品しているため、転売価格の出品でも「カートに入れる」が表示されます。
+`max_price` と `seller_keywords` を付けると、条件に合うときだけ通知します。
+
+```yaml
+  - name: ウイスキー ○○ 12年
+    type: page
+    site: amazon
+    url: https://www.amazon.co.jp/dp/B0XXXXXXXX
+    max_price: 12000               # カートボックスの価格が 12,000 円以下のときだけ
+    seller_keywords: Amazon.co.jp  # 販売元が Amazon.co.jp のときだけ（任意）
+```
+
+- 判定に使うのは、商品ページの **カートボックス（「カートに入れる」ボタンの近く）に表示されている出品** です。
+  定価の出品があっても、カートボックスに表示されていなければ通知されません。
+- 価格や販売元を読み取れなかったときは、誤通知を防ぐため「購入不可」として扱います。
+- 送料は価格に含めていません。定価に送料を足した額で `max_price` を決めると安心です。
+- `dry-run` のログに「判定: 購入不可（15,800円 / 価格 15,800円 が上限 12,000円 を超えている）」のように表示されるので、
+  価格が正しく読み取れているか確認してください。
+
 ### まだ商品ページがない発売予定品（楽天で探す）
 
 ```yaml
@@ -144,6 +165,10 @@ Yahoo の API には「新着順」の並び替えがないため、検索結果
 | `available_selectors` | ○ | ○ | △ | | | この要素（CSS セレクター）があれば購入可能 |
 | `available_keywords` | ○ | ○ | △ | | | この文字があれば購入可能 |
 | `unavailable_keywords` | ○ | ○ | ○ | | | この文字があれば購入不可（最優先） |
+| `max_price` | ○ | ○ | ※ | ○ | ○ | page では「表示価格がこれを超えたら購入不可」（転売対策） |
+| `seller_keywords` | ○ | | ※ | | | 販売元にこの文字があるときだけ購入可能（例：`Amazon.co.jp`） |
+| `price_selectors` | ○ | ○ | ○ | | | 価格を読み取る要素（amazon / rakuten は設定済み） |
+| `seller_selectors` | ○ | ○ | ○ | | | 販売元を読み取る要素（amazon は設定済み） |
 | `keyword` | | | | ✅ | ✅ | 検索キーワード（スペース区切りで AND） |
 | `must_include` | | | | ○ | ○ | 商品名に必ず含まれるべき語 |
 | `ng_keyword` | | | | ○ | ○ | 商品名に含まれていたら除外する語 |
@@ -151,6 +176,7 @@ Yahoo の API には「新着順」の並び替えがないため、検索結果
 | `preorder` | | | | | ○ | `true` で予約商品のみ |
 | `condition` | | | | | ○ | `new`（既定） / `used` / `any` |
 
+- ※ custom で `max_price` / `seller_keywords` を使うには、`price_selectors` / `seller_selectors` も指定します。
 - `page (amazon)` / `page (rakuten)` の判定ルールは最初から設定済みです。`available_*` / `unavailable_keywords` を書くと、その項目だけ上書きされます。
 - 複数の語を書く項目は、`["A", "B"]` のリスト形式でも、`A B` のスペース区切りでも書けます
   （`available_keywords` などページ用の項目は、スペースを含む 1 つの語として扱われます）。

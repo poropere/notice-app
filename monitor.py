@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -52,18 +53,47 @@ SITE_PRESETS = {
         ],
         "available_keywords": [],
         "unavailable_keywords": [],
+        # カートボックスに表示されている価格（上から順に探す）
+        "price_selectors": [
+            "#corePrice_feature_div .priceToPay .a-offscreen",
+            "#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen",
+            "#corePrice_feature_div .a-offscreen",
+            "#corePriceDisplay_desktop_feature_div .a-offscreen",
+            "#price_inside_buybox",
+            "#priceblock_ourprice",
+        ],
+        # カートボックスの「出荷元・販売元」欄
+        "seller_selectors": [
+            "#merchantInfoFeature_feature_div",
+            "#tabular-buybox",
+            "#merchant-info",
+            "#sellerProfileTriggerId",
+        ],
     },
     "rakuten": {
         "available_selectors": [],
         "available_keywords": ["かごに追加", "買い物かごに入れる", "予約する"],
         "unavailable_keywords": ["売り切れました", "販売期間外", "在庫切れ"],
+        "price_selectors": [
+            "meta[itemprop=price]",
+            "[itemprop=price]",
+            ".price2",
+        ],
+        "seller_selectors": [],
     },
     "custom": {
         "available_selectors": [],
         "available_keywords": [],
         "unavailable_keywords": [],
+        "price_selectors": [],
+        "seller_selectors": [],
     },
 }
+
+RULE_KEYS = (
+    "available_selectors", "available_keywords", "unavailable_keywords",
+    "price_selectors", "seller_selectors",
+)
 
 # 確認間隔（分）。ワークフローの実行間隔（5 分）が最短。
 # products.yml で商品ごとに interval_minutes を指定すると上書きできる。
@@ -104,6 +134,7 @@ ALLOWED_KEYS = {
     "page": COMMON_KEYS | {
         "url", "site", "open_url",
         "available_selectors", "available_keywords", "unavailable_keywords",
+        "price_selectors", "seller_selectors", "max_price", "seller_keywords",
     },
     "rakuten_search": COMMON_KEYS | {
         "keyword", "must_include", "ng_keyword", "min_price", "max_price",
@@ -212,33 +243,92 @@ def build_rule(product: dict) -> dict:
     if site not in SITE_PRESETS:
         raise ValueError(f"{product['name']}: 未対応の site です: {site}")
     rule = dict(SITE_PRESETS[site])
-    for key in ("available_selectors", "available_keywords", "unavailable_keywords"):
+    for key in RULE_KEYS:
         if key in product:
             rule[key] = as_list(product[key])
     if not rule["available_selectors"] and not rule["available_keywords"]:
         raise ValueError(
             f"{product['name']}: available_selectors か available_keywords を指定してください"
         )
+    if product.get("max_price") is not None and not rule["price_selectors"]:
+        raise ValueError(f"{product['name']}: max_price を使うには price_selectors が必要です")
+    if product.get("seller_keywords") and not rule["seller_selectors"]:
+        raise ValueError(
+            f"{product['name']}: seller_keywords を使うには seller_selectors が必要です"
+        )
     return rule
 
 
-def judge_page(html: str, rule: dict) -> bool | None:
-    """購入可能なら True、不可なら False、判定不能なら None。"""
+def extract_price(soup: BeautifulSoup, selectors: list[str]) -> int | None:
+    """「￥12,800」「12,800円」などから 12800 を取り出す。見つからなければ None。"""
+    for sel in selectors:
+        el = soup.select_one(sel)
+        if not el:
+            continue
+        raw = el.get("content") or el.get_text(" ", strip=True)
+        m = re.search(r"\d[\d,]*", raw)
+        if m:
+            return int(m.group().replace(",", ""))
+    return None
+
+
+def judge_page(html: str, rule: dict, product: dict) -> tuple[bool | None, dict]:
+    """(購入可能か, 補足情報) を返す。判定不能なら (None, {})。
+
+    補足情報: price（取得できた価格）、reason（購入不可と判定した理由）
+    """
     if any(marker in html for marker in CAPTCHA_MARKERS):
-        return None
+        return None, {}
 
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     text = soup.get_text(" ", strip=True)
 
-    if any(k in text for k in rule["unavailable_keywords"]):
-        return False
-    if any(soup.select_one(sel) for sel in rule["available_selectors"]):
-        return True
-    if any(k in text for k in rule["available_keywords"]):
-        return True
-    return False
+    info: dict = {}
+    price = extract_price(soup, rule["price_selectors"])
+    if price is not None:
+        info["price"] = price
+
+    # 1. 購入不可の文言があれば不可（最優先）
+    hit = next((k for k in rule["unavailable_keywords"] if k in text), None)
+    if hit:
+        info["reason"] = f"「{hit}」の表示あり"
+        return False, info
+
+    # 2. カートボタンなどがなければ不可
+    has_button = any(soup.select_one(sel) for sel in rule["available_selectors"])
+    has_keyword = any(k in text for k in rule["available_keywords"])
+    if not (has_button or has_keyword):
+        info["reason"] = "購入ボタンなし"
+        return False, info
+
+    # 3. 価格の上限（転売価格の出品を除く）
+    max_price = product.get("max_price")
+    if max_price is not None:
+        if price is None:
+            info["reason"] = "価格を読み取れない"
+            return False, info
+        if price > int(max_price):
+            info["reason"] = f"価格 {price:,}円 が上限 {int(max_price):,}円 を超えている"
+            return False, info
+
+    # 4. 販売元の指定（Amazon.co.jp が販売しているときだけ、など）
+    seller_words = as_list(product.get("seller_keywords"))
+    if seller_words:
+        seller_text = " ".join(
+            el.get_text(" ", strip=True)
+            for sel in rule["seller_selectors"]
+            for el in soup.select(sel)
+        )
+        if not seller_text:
+            info["reason"] = "販売元を読み取れない"
+            return False, info
+        if not any(w in seller_text for w in seller_words):
+            info["reason"] = f"販売元が指定と違う（{seller_text[:40]}）"
+            return False, info
+
+    return True, info
 
 
 def check_page(product: dict, state: dict, dry_run: bool) -> None:
@@ -260,18 +350,24 @@ def check_page(product: dict, state: dict, dry_run: bool) -> None:
         print(f"  取得失敗のためスキップ: {e}")
         return
 
-    available = judge_page(resp.text, rule)
+    available, info = judge_page(resp.text, rule, product)
     if available is None:
         print("  ボット判定ページが返されたため、今回は判定をスキップします")
         return
 
     prev = state.get(name, {}).get("available")
-    print(f"  判定: {'購入可能' if available else '購入不可'}（前回: {prev}）")
+    price_text = f"{info['price']:,}円" if "price" in info else "価格不明"
+    detail = f" / {info['reason']}" if info.get("reason") else ""
+    print(f"  判定: {'購入可能' if available else '購入不可'}"
+          f"（{price_text}{detail} / 前回: {prev}）")
 
     if available and prev is not True:
+        message = "購入できる状態になりました。タップして商品ページを開けます。"
+        if "price" in info:
+            message = f"価格: {info['price']:,}円\n" + message
         notify(
             title=f"発売・入荷: {name}",
-            message="購入できる状態になりました。タップして商品ページを開けます。",
+            message=message,
             # open_url を指定すると、監視する URL とは別の URL（アプリ用など）を開く
             click_url=product.get("open_url") or url,
             tags=["tada", "shopping_cart"],
