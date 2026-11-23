@@ -161,8 +161,11 @@ def as_list(value, split_spaces: bool = False) -> list[str]:
 
 
 def load_products() -> list[dict]:
-    with PRODUCTS_FILE.open(encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+    with PRODUCTS_FILE.open(encoding="utf-8-sig") as f:
+        text = f.read()
+    # 全角スペースは YAML の区切りとして扱われず、「# コメント」が値に混ざってしまうため
+    # 半角スペースに置き換えてから読み込む（キーワード中の全角スペースも区切りとして扱われる）
+    data = yaml.safe_load(text.replace("　", " ")) or {}
     products = data.get("products") or []
 
     names = set()
@@ -175,7 +178,9 @@ def load_products() -> list[dict]:
 
         kind = p.get("type", "page")
         if kind not in ALLOWED_KEYS:
-            continue  # main() で「未対応の type」として表示する
+            print(f"⚠ {p['name']}: 未対応の type です: {kind!r}"
+                  f"（使えるのは {', '.join(ALLOWED_KEYS)}）")
+            continue
         unknown = set(p) - ALLOWED_KEYS[kind]
         if unknown:
             print(f"⚠ {p['name']}: type: {kind} では使えない項目があります"
