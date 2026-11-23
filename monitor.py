@@ -69,6 +69,8 @@ SITE_PRESETS = {
             "#merchant-info",
             "#sellerProfileTriggerId",
         ],
+        # 本物の商品ページにだけある要素。これがなければボット対策の画面とみなす
+        "page_marker_selectors": ["#productTitle", "#dp-container"],
     },
     "rakuten": {
         "available_selectors": [],
@@ -286,6 +288,10 @@ def judge_page(html: str, rule: dict, product: dict) -> tuple[bool | None, dict]
         return None, {}
 
     soup = BeautifulSoup(html, "html.parser")
+    markers = rule.get("page_marker_selectors") or []
+    if markers and not any(soup.select_one(sel) for sel in markers):
+        return None, {}
+
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     text = soup.get_text(" ", strip=True)
@@ -364,7 +370,7 @@ def check_page(product: dict, state: dict, dry_run: bool) -> None:
 
     available, info = judge_page(resp.text, rule, product)
     if available is None:
-        print("  ボット判定ページが返されたため、今回は判定をスキップします")
+        print("  ボット対策の画面が返されたため、今回は判定をスキップします")
         return
 
     prev = state.get(name, {}).get("available")
