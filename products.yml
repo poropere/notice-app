@@ -33,7 +33,6 @@
 # ────────────────────────────────────────────────
 
 products:
-  # ↓ 例です。自分の商品に書き換えてください。
 
   - name: 例）Amazonで予約開始を待っている商品
     type: page
@@ -41,23 +40,17 @@ products:
     url: https://www.amazon.co.jp/dp/XXXXXXXXXX
     enabled: false   # URL を書き換えたらこの行を削除
 
-  - name: 例）楽天の在庫切れ商品
+    - name: 例）Amazonで予約開始を待っている商品
     type: page
-    site: rakuten
-    url: https://item.rakuten.co.jp/shop-name/item-code/
+    site: amazon
+    url: https://www.amazon.co.jp/dp/XXXXXXXXXX
     enabled: false   # URL を書き換えたらこの行を削除
 
-  - name: 例）楽天で発売予定品の出品を探す
-    type: rakuten_search
-    keyword: 商品名 型番
-    ng_keyword: 中古 ケース フィルム
-    enabled: false   # キーワードを書き換えたらこの行を削除
-
-  - name: 例）Yahoo!ショッピングで発売予定品の出品を探す
-    type: yahoo_search
-    keyword: 商品名 型番
-    ng_keyword: ケース フィルム
-    enabled: false   # キーワードを書き換えたらこの行を削除
+  - name: 【Yahoo】ユニアリ D.Gray-man      # 必須。通知のタイトルになる。重複不可
+    type: yahoo_search                    　# 必須
+    keyword: ユニオンアリーナ D.Gray-man    # 必須。スペース区切りで AND 検索
+    min_price: 3000                       # 3万円以上（アクセサリー類を除く）
+    max_price: 5500                       # 8万円以下（転売の高額品を除く）
 
   # その他のサイトは site: custom で、判定に使う文言を自分で指定します。
   # - name: メーカー直販サイトの商品
@@ -66,3 +59,62 @@ products:
   #   url: https://example.com/products/123
   #   available_keywords: ["カートに入れる"]
   #   unavailable_keywords: ["SOLD OUT", "近日発売"]
+
+  - name: 例）Amazonで予約開始を待っている商品
+    type: page
+    site: amazon
+    url: https://www.amazon.co.jp/dp/XXXXXXXXXX
+    enabled: false   # URL を書き換えたらこの行を削除
+
+  - name: 【Amazon】最大項目       # 必須。重複不可
+    type: page                              # 省略可（省略時は page）
+    site: amazon                            # 必須
+    url: https://www.amazon.co.jp/dp/B0XXXXXXXX   # 必須。/dp/商品コード の短い形が確実
+    open_url: https://www.amazon.co.jp/dp/B0XXXXXXXX?psc=1  # タップ時に開くURL（省略時は url）
+    available_selectors:                    # この要素があれば「購入可能」
+      - "#add-to-cart-button"
+      - "#buy-now-button"
+    available_keywords: ["予約注文する"]     # この文字があれば「購入可能」
+    unavailable_keywords: ["現在お取り扱いできません"]  # この文字があれば「購入不可」（最優先）
+    interval_minutes: 60                    # 60分おき（省略時は30分。30より短くもできる）
+    enabled: false
+
+  - name: 例）楽天の在庫切れ商品（この場合、予約可能、購入可能どっちも来る）
+    type: page
+    site: rakuten
+    url: https://item.rakuten.co.jp/shop-name/item-code/
+    enabled: false   # URL を書き換えたらこの行を削除
+
+  - name: 例）Yahoo!ショッピングで発売予定品の出品を探す
+    type: yahoo_search
+    keyword: 商品名 型番
+    ng_keyword: ケース フィルム
+    enabled: false   # キーワードを書き換えたらこの行を削除
+
+  - name: 【Yahoo】最大項目       # 必須。通知のタイトルになる。重複不可
+    type: yahoo_search                     # 必須
+    keyword: ゲーム機 新モデル 本体          # 必須。スペース区切りで AND 検索
+    must_include: ["本体", "新モデル"]       # 商品名にすべて含まれるものだけ通知
+    ng_keyword: 中古 ケース フィルム 互換     # 商品名に1つでも含まれたら除外
+    min_price: 30000                       # 3万円以上（アクセサリー類を除く）
+    max_price: 80000                       # 8万円以下（転売の高額品を除く）
+    preorder: true                         # 予約商品だけを対象にする
+    condition: new                         # new（既定）/ used / any
+    interval_minutes: 10                   # 10分おきに確認（省略時は5分）
+    enabled: false                          # false で一時停止（省略時は true）
+
+  - name: 例）楽天で発売予定品の出品を探す
+    type: rakuten_search
+    keyword: 商品名 型番
+    ng_keyword: 中古 ケース フィルム
+    enabled: false   # キーワードを書き換えたらこの行を削除
+
+  - name: 【楽天】最大項目
+    type: rakuten_search
+    keyword: ゲーム機 新モデル 本体
+    must_include: 本体 新モデル              # スペース区切りでも書ける
+    ng_keyword: ["中古", "ケース", "フィルム", "互換"]   # リスト形式でも書ける
+    min_price: 30000
+    max_price: 80000
+    interval_minutes: 10
+    enabled: false                         # 楽天APIが使えるようになるまで停止
