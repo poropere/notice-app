@@ -368,6 +368,19 @@ def check_page(product: dict, state: dict, dry_run: bool) -> None:
         print(f"  [dry-run] HTTP {resp.status_code} / {len(resp.text):,} 文字 / "
               f"最終URL: {resp.url} / タイトル: {title[:60]}")
 
+        # 判定に使う文言の前後を表示する（unavailable_keywords を決める手がかり）
+        soup_dbg = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup_dbg(["script", "style", "noscript"]):
+            tag.decompose()
+        page_text = soup_dbg.get_text(" ", strip=True)
+        probe_words = (rule["available_keywords"] + rule["unavailable_keywords"]
+                       + ["終了", "受付中", "受付期間", "締切", "売り切れ", "SOLD OUT"])
+        for word in dict.fromkeys(probe_words):
+            pos = page_text.find(word)
+            if pos >= 0:
+                snippet = page_text[max(0, pos - 40):pos + 40]
+                print(f"  [dry-run] 「{word}」付近: …{snippet}…")
+
     available, info = judge_page(resp.text, rule, product)
     if available is None:
         print("  ボット対策の画面が返されたため、今回は判定をスキップします")

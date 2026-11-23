@@ -100,6 +100,7 @@ products:
     url: https://www.biccamera.com/bc/c/sale/special/fukubako/index.html
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
+    enabled: false   # GitHub からのアクセスは応答がない（遮断されている）ため停止中
 
   - name: 【抽選】アピタ・ピアゴ 山崎・白州
     type: page
@@ -111,7 +112,7 @@ products:
   - name: 【抽選】イトーヨーカドー 山崎・白州
     type: page
     site: custom
-    url: https://iyec.itoyokado.co.jp/shop/pages/apply_RLlottery.aspx
+    url: https://iyec.itoyokado.co.jp/shop/e/eE4reslot/   # 受付中の予約・抽選の一覧
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
 
