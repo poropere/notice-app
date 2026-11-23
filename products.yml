@@ -34,17 +34,25 @@
 
 products:
 
-  - name: 例）Amazonで予約開始を待っている商品
+  - name: 【Amazon】山崎12年
     type: page
     site: amazon
-    url: https://www.amazon.co.jp/dp/XXXXXXXXXX
-    enabled: false   # URL を書き換えたらこの行を削除
+    url: https://www.amazon.co.jp/dp/B00384EZHE
+    max_price: 18000
 
-    - name: 例）Amazonで予約開始を待っている商品
-    type: page
-    site: amazon
-    url: https://www.amazon.co.jp/dp/XXXXXXXXXX
-    enabled: false   # URL を書き換えたらこの行を削除
+  - name: 【Yahoo】山崎12年      # 必須。通知のタイトルになる。重複不可
+    type: yahoo_search                    　# 必須
+    keyword: 山崎 12年    # 必須。スペース区切りで AND 検索
+    min_price: 16000                       # 3万円以上（アクセサリー類を除く）
+    max_price: 18000                       # 8万円以下（転売の高額品を除く）
+    interval_minutes: 10                   # 10分おきに確認（省略時は5分）
+
+  - name: 【Yahoo】山崎18年      # 必須。通知のタイトルになる。重複不可
+    type: yahoo_search                    　# 必須
+    keyword: 山崎 18年    # 必須。スペース区切りで AND 検索
+    min_price: 60000                       # 3万円以上（アクセサリー類を除く）
+    max_price: 69000                       # 8万円以下（転売の高額品を除く）
+    interval_minutes: 10                   # 10分おきに確認（省略時は5分）
 
   - name: 【Yahoo】ユニアリ D.Gray-man      # 必須。通知のタイトルになる。重複不可
     type: yahoo_search                    　# 必須
@@ -64,6 +72,7 @@ products:
     type: page
     site: amazon
     url: https://www.amazon.co.jp/dp/XXXXXXXXXX
+    max_price: 12000
     enabled: false   # URL を書き換えたらこの行を削除
 
   - name: 【Amazon】最大項目       # 必須。重複不可
@@ -77,6 +86,8 @@ products:
     available_keywords: ["予約注文する"]     # この文字があれば「購入可能」
     unavailable_keywords: ["現在お取り扱いできません"]  # この文字があれば「購入不可」（最優先）
     interval_minutes: 60                    # 60分おき（省略時は30分。30より短くもできる）
+    max_price: 12000               # 12,000円以下のときだけ通知
+    seller_keywords: Amazon.co.jp  # 販売元が Amazon.co.jp のときだけ（任意）
     enabled: false
 
   - name: 例）楽天の在庫切れ商品（この場合、予約可能、購入可能どっちも来る）
