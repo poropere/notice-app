@@ -144,7 +144,7 @@ products:
   # 他社の「金色の闇」1/4 フィギュア（バニー等）と区別するため「水着」を必須にする
   - name: 【Yahoo】ToLOVEる 金色の闇 水着 1/4
     type: yahoo_search
-    keyword: 金色の闇 水着 1/4
+    keyword: ToLOVEる 金色の闇 水着
     must_include: 金色の闇 水着
     ng_keyword: 中古 開封済み 箱傷み 台座のみ パーツ 交換用 ポスター タペストリー アクリル
     min_price: 35000
