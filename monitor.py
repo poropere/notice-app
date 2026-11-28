@@ -184,6 +184,16 @@ def load_products(include_disabled: bool = False) -> list[dict]:
     data = yaml.safe_load(text.replace("　", " ")) or {}
     products = data.get("products") or []
 
+    # default_runner: runner を書いていない商品をどこで確認するか（省略時は github）
+    default_runner = str(data.get("default_runner") or DEFAULT_RUNNER).strip().lower()
+    if default_runner not in RUNNERS:
+        print(f"⚠ default_runner は {' / '.join(RUNNERS)} のどれかにしてください"
+              f"（{default_runner!r} のため github として扱います）")
+        default_runner = DEFAULT_RUNNER
+    for p in products:
+        if isinstance(p, dict) and not p.get("runner"):
+            p["runner"] = default_runner
+
     names = set()
     for p in products:
         if not p.get("name"):
@@ -650,7 +660,24 @@ def main() -> int:
     else:
         products = [p for p in load_products() if runner_of(p) == runner]
     print(f"実行場所: {runner} / 対象 {len(products)} 件 / 状態ファイル: {STATE_FILE.name}")
+    if not products:
+        # 担当の商品がないときは何もしない（もう一方の状態ファイルを消さないよう保存もしない）
+        print("担当の商品がないため終了します")
+        return 0
     state = load_state()
+
+    # GitHub から Mac へ移した商品は、GitHub が記録していた状態を引き継ぐ
+    # （引き継がないと「監視開始」や同じ商品の通知がもう一度届いてしまう）
+    legacy_file = BASE_DIR / "state.json"
+    if STATE_FILE != legacy_file and legacy_file.exists():
+        with legacy_file.open(encoding="utf-8") as f:
+            legacy = json.load(f)
+        moved = [p["name"] for p in products
+                 if p["name"] not in state and p["name"] in legacy]
+        for moved_name in moved:
+            state[moved_name] = legacy[moved_name]
+        if moved:
+            print(f"GitHub の記録から {len(moved)} 件の状態を引き継ぎました")
 
     now = time.time()
     for product in products:

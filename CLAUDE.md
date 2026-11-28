@@ -6,18 +6,17 @@
 ## 仕組み
 
 - `products.yml` に監視対象を書く → `monitor.py` が確認 → 変化があれば ntfy 経由で iPhone に通知。
-- 実行は GitHub Actions（`.github/workflows/monitor.yml`）。
-  - **5 分ごとの起動は外部サービス cron-job.org から `workflow_dispatch`（mode=normal）で行っている。**
-    GitHub の `schedule` は遅延・不発が多いため、1 時間に 1 回の予備として残しているだけ。
-  - cron-job.org 用のアクセスキー（fine-grained PAT、Actions: Read and write のみ）には有効期限がある。期限切れで 5 分ごとの実行が止まる。
-- `state.json` は前回の状態の記録。**ワークフローが自動でコミットするので手で編集しない。**
-- **自宅の Mac でも動かせる**（`mac/notice.sh`。launchd で 5 分ごと）。`runner: mac` の商品だけを Mac が確認し、
-  省略した商品は GitHub が確認する（環境変数 `MONITOR_RUNNER` で切り替え）。
-  Mac は毎回 `git pull` で `products.yml` を取り込むだけで、push はしない。Mac の状態は `state-mac.json`（Git 管理外）。
-  GitHub から読めないサイト（Amazon・ビックカメラ等）を追加するときは `runner: mac` を付ける。
-  Mac 側の dry-run は利用者が Mac で `bash mac/notice.sh dry-run "商品名"` を実行する必要がある（GitHub の dry-run では Mac 担当は確認されない）。
-- Secrets: `NTFY_TOPIC`, `YAHOO_APP_ID`（登録済み）。楽天 API は未発行（楽天の管理画面がメンテナンス中で発行不可）。
-- リポジトリは **Public**（Actions を無料・無制限で使うため。Private だと月 2,000 分を超える）。
+- **監視はすべて自宅の Mac で行う（2026-11-28 移行）。** `mac/notice.sh` を launchd で 5 分ごとに実行。
+  - `products.yml` の `default_runner: mac` により、`runner` を書いていない商品はすべて Mac が確認する。
+    `runner: github` を付けた商品だけ GitHub Actions が確認する（環境変数 `MONITOR_RUNNER` で切り替え）。
+  - Mac は毎回 `git pull` で `products.yml` を取り込むだけで、push はしない。**GitHub に push すれば最長 5 分で Mac に反映される。**
+  - Mac の状態は `state-mac.json`、通知先などの設定は `mac/config.env`（どちらも Git 管理外）。
+  - 監視が止まったら、まず Mac の電源・ログイン・`bash mac/notice.sh status` を疑う（利用者に Mac で実行してもらう）。
+- GitHub Actions（`.github/workflows/monitor.yml`）は手動実行（dry-run・テスト通知）用に残している。定期実行はしない。
+  cron-job.org からの 5 分ごとの起動は移行時に停止した（動いていても担当 0 件なので何もしない）。
+  - `state.json` は GitHub 時代の記録。Mac が初めて確認する商品はここから状態を引き継ぐ。**手で編集しない。**
+- Secrets: `NTFY_TOPIC`, `YAHOO_APP_ID`（登録済み。dry-run 用）。楽天 API は未発行（楽天の管理画面がメンテナンス中で発行不可）。
+- リポジトリは **Public**（Mac がログインなしで `git pull` できるため。Private にするなら Mac に認証設定が必要）。
 
 ## 監視対象の追加（よくある依頼）
 
@@ -43,12 +42,14 @@
 
 | サイト | 理由 |
 |---|---|
-| Amazon（GitHub から） | GitHub のサーバーからは毎回ボット対策の画面が返る。**`runner: mac` なら読める**（2026-11-28 確認。間隔は 30 分以上） |
+| Amazon | GitHub のサーバーからは毎回ボット対策の画面が返る。**自宅の Mac からは読める**（2026-11-28 確認。間隔は 30 分以上）→ 監視可 |
 | ビックカメラ.com | GitHub からも自宅の Mac からも応答しない（遮断） |
 | 東急百貨店の抽選ページ | 受付中／終了の表示が JavaScript で切り替わり、文字で判定できない |
 | ポケモンセンターオンライン | ボット対策が厳しく、読み取れない可能性が高い（未検証） |
 | あみあみ | GitHub からのアクセスは 403（拒否）が返る（2026/11 dry-run で確認） |
 | 駿河屋 | トップページ・検索ページとも GitHub からは 403（拒否）が返る（2026/11 dry-run で確認） |
+
+あみあみ・駿河屋は GitHub からの確認のみで、自宅の Mac からは未検証（読める可能性がある。試すなら利用者に Mac での dry-run を頼む）。
 
 新しいサイトを `page` で監視する場合は、ボット対策や JavaScript 描画で読み取れないことがあるので、必ず dry-run で確認する。
 
@@ -65,9 +66,11 @@
    `python -c "import monitor; print(len(monitor.load_products()), 'items')"`
    → 「⚠」の警告が出ないこと。
 2. 実際の判定（GitHub CLI が使える場合）：
-   `gh workflow run monitor.yml -R poropere/notice-app -f mode=dry-run` を実行し、
+   `gh workflow run monitor.yml -R poropere/notice-app -f mode=dry-run -f runner=mac` を実行し、
    `gh run view <id> -R poropere/notice-app --log` で「ヒット ○件」「判定: …」を確認する。
+   （`runner=mac` を付けないと担当 0 件で何も確認されない。GitHub から試すので、Amazon など GitHub から読めないサイトは失敗するのが正常。）
    dry-run は通知も保存もしない。ページ監視では HTTP ステータス・文字数・タイトルと、キーワード前後の文章がログに出る。
+   GitHub から読めないサイトは、利用者に Mac で `bash mac/notice.sh dry-run "商品名"` を実行してもらい、結果を貼ってもらう。
 3. 結果（ヒット件数、判定、警告）を利用者に日本語で簡潔に報告する。
 
 ## やってはいけないこと

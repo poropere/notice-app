@@ -214,11 +214,12 @@ iPhone に Amazon・楽天市場・Yahoo!ショッピングのアプリが入っ
 
 ---
 
-## 自宅の Mac でも監視する（GitHub から読めないサイト用）
+## 自宅の Mac で監視する（現在はすべて Mac で監視）
 
-Amazon やビックカメラは GitHub のサーバーからのアクセスを止めるため、自宅の Mac から確認します。
-`products.yml` で `runner: mac` を付けた商品だけを Mac が確認し、それ以外はこれまでどおり GitHub が確認します
-（同じ通知が 2 回届くことはありません）。
+`products.yml` の `default_runner: mac` により、すべての商品を自宅の Mac が 5 分ごとに確認しています
+（Amazon は GitHub のサーバーからは読めませんが、自宅の回線からは読めます）。
+商品ごとに `runner: github` を付けると、その商品だけを GitHub Actions が確認します（同じ通知が 2 回届くことはありません）。
+GitHub Actions の定期実行は止めており、手動の dry-run・テスト通知用にだけ残しています。
 
 - 監視対象の一覧は GitHub の `products.yml` のままです。Mac は毎回最新を取り込むので、iPhone からの追加もそのまま反映されます。
 - Mac 側の状態（`state-mac.json`）・通知先の設定（`mac/config.env`）・記録（`mac/logs/`）は Mac の中だけに保存され、GitHub には送られません。

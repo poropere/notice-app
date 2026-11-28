@@ -31,9 +31,11 @@
 #
 # 一時的に止めたい商品は enabled: false を付けます。
 #
-# runner: mac を付けた商品は、GitHub ではなく自宅の Mac が確認します
-# （GitHub のサーバーからは読めない Amazon などのサイト向け）。省略時は GitHub が確認します。
+# 監視はすべて自宅の Mac で行います（下の default_runner: mac）。
+# 商品ごとに runner: github を付けると、その商品だけ GitHub が確認します。
 # ────────────────────────────────────────────────
+
+default_runner: mac
 
 products:
 

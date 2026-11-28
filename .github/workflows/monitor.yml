@@ -1,11 +1,8 @@
 name: 商品の発売チェック
 
 on:
-  schedule:
-    # 5 分ごとの実行は外部サービス（cron-job.org）から workflow_dispatch で起動しています。
-    # GitHub の定期実行は遅れや取りこぼしが多いため、1 時間に 1 回の予備としてだけ残しています。
-    # 間隔の長い商品（interval_minutes）は monitor.py 側で間引いています
-    - cron: "17 * * * *"
+  # 監視は自宅の Mac（mac/notice.sh）で 5 分ごとに行っているため、GitHub の定期実行はしない。
+  # ここは手動の確認（dry-run・テスト通知）と、runner: github の商品用に残している。
   workflow_dispatch:
     inputs:
       mode:
@@ -20,6 +17,13 @@ on:
         description: "テスト通知をタップしたときに開く URL（任意。test-notification のときだけ使用）"
         type: string
         required: false
+      runner:
+        description: "dry-run で確認する商品（mac にすると Mac 担当の商品を GitHub から試す。Amazon は読めない）"
+        type: choice
+        default: github
+        options:
+          - github
+          - mac
 
 permissions:
   contents: write
@@ -52,6 +56,8 @@ jobs:
           YAHOO_APP_ID: ${{ secrets.YAHOO_APP_ID }}
           MODE: ${{ github.event.inputs.mode || 'normal' }}
           TEST_URL: ${{ github.event.inputs.test_url }}
+          # 通常の実行では github 担当だけを確認する（Mac と同じ通知を二重に送らないため）
+          MONITOR_RUNNER: ${{ github.event.inputs.mode == 'dry-run' && github.event.inputs.runner || 'github' }}
         run: |
           if [ "$MODE" = "test-notification" ]; then
             if [ -n "$TEST_URL" ]; then
