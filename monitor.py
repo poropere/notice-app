@@ -28,7 +28,9 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 import yaml
@@ -117,6 +119,37 @@ SITE_INTERVAL_MINUTES = {
 INTERVAL_TOLERANCE_SECONDS = 120
 
 
+# active_hours: "16-18" のように書くと、日本時間のその時間帯だけ確認する
+# （16:00〜18:00。終わりの時刻ちょうどの確認も含む。"22-2" のように日付をまたいでもよい）
+JST = ZoneInfo("Asia/Tokyo")
+
+
+def parse_active_hours(value) -> tuple[int, int] | None:
+    """'16-18' → (960, 1080)（0 時からの分）。'16:30-18' のように分も書ける。"""
+    if value in (None, ""):
+        return None
+    m = re.fullmatch(r"\s*(\d{1,2})(?::(\d{2}))?\s*[-~〜～]\s*(\d{1,2})(?::(\d{2}))?\s*",
+                     str(value))
+    if not m:
+        raise ValueError(f"active_hours は \"16-18\" のように書いてください: {value!r}")
+    sh, sm, eh, em = (int(x) if x else 0 for x in m.groups())
+    if not (0 <= sh <= 24 and 0 <= eh <= 24 and sm < 60 and em < 60):
+        raise ValueError(f"active_hours の時刻が正しくありません: {value!r}")
+    return sh * 60 + sm, eh * 60 + em
+
+
+def in_active_hours(product: dict, now: datetime | None = None) -> bool:
+    window = parse_active_hours(product.get("active_hours"))
+    if window is None:
+        return True
+    now = now or datetime.now(JST)
+    minute = now.hour * 60 + now.minute
+    start, end = window
+    if start <= end:
+        return start <= minute <= end
+    return minute >= start or minute <= end  # 日付をまたぐ（例: 22-2）
+
+
 def check_interval(product: dict) -> int:
     if product.get("interval_minutes"):
         return max(int(product["interval_minutes"]), DEFAULT_INTERVAL_MINUTES)
@@ -141,7 +174,7 @@ CAPTCHA_MARKERS = [
 # --------------------------------------------------------------------------
 
 # type ごとに使えるプロパティ。これ以外を書くと警告を出す（書き間違いに気づけるように）。
-COMMON_KEYS = {"name", "type", "enabled", "interval_minutes", "runner"}
+COMMON_KEYS = {"name", "type", "enabled", "interval_minutes", "runner", "active_hours"}
 ALLOWED_KEYS = {
     "page": COMMON_KEYS | {
         "url", "site", "open_url", "message",
@@ -215,6 +248,11 @@ def load_products(include_disabled: bool = False) -> list[dict]:
         missing = REQUIRED_KEYS[kind] - set(p)
         if missing:
             print(f"⚠ {p['name']}: 必須の項目がありません: {', '.join(sorted(missing))}")
+        try:
+            parse_active_hours(p.get("active_hours"))
+        except ValueError as e:
+            print(f"⚠ {p['name']}: {e}（時間帯の指定は無視します）")
+            p.pop("active_hours", None)
         if runner_of(p) not in RUNNERS:
             print(f"⚠ {p['name']}: runner は {' / '.join(RUNNERS)} のどれかにしてください"
                   f"（{p.get('runner')!r} はどこでも確認されません）")
@@ -758,6 +796,11 @@ def main() -> int:
         kind = product.get("type", "page")
         interval = check_interval(product)
         print(f"■ {name}（{kind} / {interval}分おき）")
+
+        # active_hours の時間帯の外は確認しない（dry-run では時間帯に関係なく試す）
+        if not args.dry_run and not in_active_hours(product):
+            print(f"  スキップ（確認する時間帯 {product['active_hours']} の外）")
+            continue
 
         # ワークフローは 5 分ごとに動くので、間隔の長い商品は前回から時間が経つまで飛ばす
         last = state.get(name, {}).get("last_checked", 0)
