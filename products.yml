@@ -23,6 +23,9 @@
 #      preorder:  true にすると予約商品だけを対象にする（任意）
 #      condition: new（既定・新品のみ） / used（中古のみ） / any（両方）
 #
+# type: page で render: browser を付けると、ブラウザで開いて画面に見えている文字で判定します
+# （JavaScript で後から表示されるページ用。403 で拒否されるサイトには効きません）。
+#
 # type: page では open_url を付けると、通知をタップしたときに
 # 監視している URL ではなく、その URL を開きます（アプリで開く URL など）。
 #
@@ -190,7 +193,8 @@ products:
     url: https://online.tokyu-dept.co.jp/cp/?fkey=lottery_sale
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
-    enabled: false   # 受付中/終了の表示が JavaScript で切り替わるため、文字では判定できない
+    render: browser  # 受付中/終了の表示が JavaScript で切り替わるため、ブラウザで開いて画面の文字で判定する
+    enabled: false   # Mac での dry-run で判定できるか確認するまで停止中
 
   # その他のサイトは site: custom で、判定に使う文言を自分で指定します。
   # - name: メーカー直販サイトの商品

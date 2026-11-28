@@ -147,6 +147,7 @@ ALLOWED_KEYS = {
         "url", "site", "open_url", "message",
         "available_selectors", "available_keywords", "unavailable_keywords",
         "price_selectors", "seller_selectors", "max_price", "seller_keywords",
+        "render",
     },
     "rakuten_search": COMMON_KEYS | {
         "keyword", "must_include", "ng_keyword", "min_price", "max_price",
@@ -292,7 +293,62 @@ def build_rule(product: dict) -> dict:
         raise ValueError(
             f"{product['name']}: seller_keywords を使うには seller_selectors が必要です"
         )
+    if product.get("render") not in (None, "http", "browser"):
+        raise ValueError(f"{product['name']}: render は browser か http にしてください")
     return rule
+
+
+# --------------------------------------------------------------------------
+# ブラウザ（Playwright）でページを開く（render: browser の商品だけ）
+# --------------------------------------------------------------------------
+# JavaScript で後から表示されるページ用。画面に見えている文字だけで判定できる。
+# ボット対策の回避はしない：ブラウザの名乗り（User-Agent）は標準のまま、
+# 403 などで拒否されたらそのサイトは読めないものとして扱う。
+
+_PLAYWRIGHT = None
+_BROWSER = None
+
+
+def fetch_with_browser(url: str) -> tuple[int, str, str, str]:
+    """(HTTP ステータス, 最終 URL, 表示後の HTML, 画面に見えている文字) を返す。"""
+    global _PLAYWRIGHT, _BROWSER
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeout
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise RuntimeError(
+            "ブラウザ機能（Playwright）が入っていません。"
+            "Mac で bash mac/notice.sh setup を実行してください"
+        ) from None
+
+    if _BROWSER is None:
+        _PLAYWRIGHT = sync_playwright().start()
+        _BROWSER = _PLAYWRIGHT.chromium.launch(headless=True)
+
+    context = _BROWSER.new_context(locale="ja-JP")
+    try:
+        page = context.new_page()
+        resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=20000)
+        except PlaywrightTimeout:
+            pass  # 広告などで通信が終わらないページもあるので、その時点の表示で判定する
+        page.wait_for_timeout(2000)
+        status = resp.status if resp else 0
+        visible = " ".join(page.inner_text("body").split())
+        return status, page.url, page.content(), visible
+    finally:
+        context.close()
+
+
+def close_browser() -> None:
+    global _PLAYWRIGHT, _BROWSER
+    if _BROWSER is not None:
+        _BROWSER.close()
+        _BROWSER = None
+    if _PLAYWRIGHT is not None:
+        _PLAYWRIGHT.stop()
+        _PLAYWRIGHT = None
 
 
 def extract_price(soup: BeautifulSoup, selectors: list[str]) -> int | None:
@@ -308,10 +364,12 @@ def extract_price(soup: BeautifulSoup, selectors: list[str]) -> int | None:
     return None
 
 
-def judge_page(html: str, rule: dict, product: dict) -> tuple[bool | None, dict]:
+def judge_page(html: str, rule: dict, product: dict,
+               visible_text: str | None = None) -> tuple[bool | None, dict]:
     """(購入可能か, 補足情報) を返す。判定不能なら (None, {})。
 
     補足情報: price（取得できた価格）、reason（購入不可と判定した理由）
+    visible_text: ブラウザで開いたときに画面に見えている文字（あればこれで文言を判定する）
     """
     if any(marker in html for marker in CAPTCHA_MARKERS):
         return None, {}
@@ -323,7 +381,8 @@ def judge_page(html: str, rule: dict, product: dict) -> tuple[bool | None, dict]
 
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
-    text = soup.get_text(" ", strip=True)
+    # ブラウザで開いた場合は、隠れている文字（切り替え前の「終了」表示など）を含めない
+    text = visible_text if visible_text is not None else soup.get_text(" ", strip=True)
 
     info: dict = {}
     price = extract_price(soup, rule["price_selectors"])
@@ -375,33 +434,47 @@ def check_page(product: dict, state: dict, dry_run: bool) -> None:
     name = product["name"]
     url = product["url"]
     rule = build_rule(product)
+    use_browser = product.get("render") == "browser"
 
+    visible_text = None
     try:
-        resp = requests.get(
-            url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept-Language": "ja-JP,ja;q=0.9",
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"  取得失敗のためスキップ: {e}")
+        if use_browser:
+            status, final_url, html, visible_text = fetch_with_browser(url)
+            if status >= 400:
+                print(f"  取得失敗のためスキップ: HTTP {status}"
+                      "（サイトに拒否されました。ブラウザ機能でも回避はしません）")
+                return
+        else:
+            resp = requests.get(
+                url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Accept-Language": "ja-JP,ja;q=0.9",
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            status, final_url, html = resp.status_code, resp.url, resp.text
+    except Exception as e:  # noqa: BLE001  通信エラー・ブラウザのエラー
+        first_line = (str(e).splitlines() or [""])[0]
+        print(f"  取得失敗のためスキップ: {first_line[:200]}")
         return
 
     if dry_run:
         # 本物の商品ページか、ボット対策の画面かを見分けるための手がかり
-        title_tag = BeautifulSoup(resp.text, "html.parser").title
+        title_tag = BeautifulSoup(html, "html.parser").title
         title = title_tag.get_text(strip=True) if title_tag else "(タイトルなし)"
-        print(f"  [dry-run] HTTP {resp.status_code} / {len(resp.text):,} 文字 / "
-              f"最終URL: {resp.url} / タイトル: {title[:60]}")
+        print(f"  [dry-run] {'ブラウザ / ' if use_browser else ''}HTTP {status} / "
+              f"{len(html):,} 文字 / 最終URL: {final_url} / タイトル: {title[:60]}")
 
         # 判定に使う文言の前後を表示する（unavailable_keywords を決める手がかり）
-        soup_dbg = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup_dbg(["script", "style", "noscript"]):
-            tag.decompose()
-        page_text = soup_dbg.get_text(" ", strip=True)
+        if visible_text is not None:
+            page_text = visible_text
+        else:
+            soup_dbg = BeautifulSoup(html, "html.parser")
+            for tag in soup_dbg(["script", "style", "noscript"]):
+                tag.decompose()
+            page_text = soup_dbg.get_text(" ", strip=True)
         probe_words = (rule["available_keywords"] + rule["unavailable_keywords"]
                        + ["終了", "受付中", "受付期間", "締切", "売り切れ", "SOLD OUT"])
         for word in dict.fromkeys(probe_words):
@@ -410,7 +483,7 @@ def check_page(product: dict, state: dict, dry_run: bool) -> None:
                 snippet = page_text[max(0, pos - 40):pos + 40]
                 print(f"  [dry-run] 「{word}」付近: …{snippet}…")
 
-    available, info = judge_page(resp.text, rule, product)
+    available, info = judge_page(html, rule, product, visible_text)
     if available is None:
         print("  ボット対策の画面が返されたため、今回は判定をスキップします")
         return
@@ -711,6 +784,8 @@ def main() -> int:
 
         # サイトに負荷をかけないよう間隔を空ける（楽天・Yahoo の API は 1 秒 1 回まで）
         time.sleep(2)
+
+    close_browser()
 
     # 削除された商品の状態は捨てる
     names = {p["name"] for p in products}

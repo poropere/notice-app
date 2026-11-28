@@ -81,6 +81,14 @@ cmd_setup() {
   fi
   say "  完了"
 
+  # render: browser の商品用。JavaScript で後から表示されるページを、画面のないブラウザで開く
+  say "● ブラウザ機能（Playwright）を準備しています（初回は数分・約 200MB）"
+  if "$PY" -m pip install -q "playwright<2" && "$PY" -m playwright install chromium; then
+    say "  完了"
+  else
+    say "⚠ ブラウザ機能を準備できませんでした（render: browser の商品だけ確認できません。ほかは動きます）"
+  fi
+
   mkdir -p "$LOG_DIR"
 
   if [ -f "$CONFIG" ]; then
