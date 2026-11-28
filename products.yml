@@ -192,9 +192,12 @@ products:
     site: custom
     url: https://online.tokyu-dept.co.jp/cp/?fkey=lottery_sale
     available_keywords: ["山崎", "白州"]
+    # 終了した抽選も一覧に残り「応募期間終了」と表示される（2026-11-28 Mac の dry-run で確認）。
+    # この表示がある間は通知しない → 消えて山崎・白州が載ったら（次の抽選が始まったら）通知する
+    unavailable_keywords: ["応募期間終了", "受付終了"]
     interval_minutes: 30
     render: browser  # 受付中/終了の表示が JavaScript で切り替わるため、ブラウザで開いて画面の文字で判定する
-    enabled: false   # Mac での dry-run で判定できるか確認するまで停止中
+    message: 東急百貨店の抽選ページが更新されました。応募期間と応募条件（会員登録など）を確認してください。
 
   # その他のサイトは site: custom で、判定に使う文言を自分で指定します。
   # - name: メーカー直販サイトの商品
