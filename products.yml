@@ -141,22 +141,6 @@ products:
     max_price: 42000
     interval_minutes: 5
 
-  # あみあみの商品ページ（ブラウザ表示で読めるか確認中）
-  # 前回は Mac から普通に読んでも監視できなかった。JavaScript で後から表示されるのが原因なら
-  # render: browser で読める。403（拒否）なら回避はしないので、この項目は削除する。
-  # 利用者の希望で 5 分おき・日本時間 16:00〜18:00 のみ確認する。
-  - name: 【あみあみ】FIGURE-201812
-    type: page
-    site: custom
-    url: https://www.amiami.jp/top/detail/detail?gcode=FIGURE-201812
-    render: browser
-    available_keywords: ["カートに入れる"]
-    unavailable_keywords: ["受注終了", "販売終了", "在庫切れ", "予約受付終了"]
-    interval_minutes: 5
-    active_hours: "16-18"
-    message: あみあみで購入できる状態になりました。タップして商品ページを確認してください。
-    enabled: false   # Mac で dry-run して読めるか確認するまで停止中
-
   # ── 山崎・白州：通販の抽選ページを見張る ──
   # ページに「山崎」か「白州」が載ったら（＝抽選・販売の受付が始まったら）通知します。
 
