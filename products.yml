@@ -52,15 +52,19 @@ products:
   - name: 【Yahoo】山崎12年      # 必須。通知のタイトルになる。重複不可
     type: yahoo_search                     # 必須
     keyword: 山崎 12年    # 必須。スペース区切りで AND 検索
-    min_price: 16000                       # 3万円以上（アクセサリー類を除く）
-    max_price: 18000                       # 8万円以下（転売の高額品を除く）
+    must_include: 山崎 12年                 # 商品名に両方入っているものだけ（説明文だけ一致する Blu-ray 等を除く）
+    ng_keyword: ブルーレイ Blu-ray DVD CD 書籍 白州 響 18年 25年 180ml 50ml ミニ 空瓶 グラス
+    min_price: 16000                       # 定価 17,600円の前後
+    max_price: 18000                       # これより高い出品（転売価格）は除く
     interval_minutes: 10                   # 10分おきに確認（省略時は5分）
 
   - name: 【Yahoo】山崎18年      # 必須。通知のタイトルになる。重複不可
     type: yahoo_search                     # 必須
     keyword: 山崎 18年    # 必須。スペース区切りで AND 検索
-    min_price: 60000                       # 3万円以上（アクセサリー類を除く）
-    max_price: 69000                       # 8万円以下（転売の高額品を除く）
+    must_include: 山崎 18年                 # 商品名に両方入っているものだけ
+    ng_keyword: ブルーレイ Blu-ray DVD CD 書籍 白州 響 12年 25年 180ml 50ml ミニ 空瓶 グラス
+    min_price: 60000                       # 定価の前後
+    max_price: 69000                       # これより高い出品（転売価格）は除く
     interval_minutes: 10                   # 10分おきに確認（省略時は5分）
 
   - name: 【Yahoo】ユニアリ D.Gray-man      # 必須。通知のタイトルになる。重複不可
