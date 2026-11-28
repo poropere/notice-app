@@ -41,9 +41,8 @@ products:
     type: page
     site: amazon
     url: https://www.amazon.co.jp/dp/B00384EZHE
-    max_price: 18000
-    runner: mac      # 自宅の Mac で確認する
-    enabled: false   # Mac で読めるか試すまで停止中（GitHub からはボット対策で毎回止められた）
+    max_price: 18000   # 定価 17,600円。これを超える出品（転売価格）では通知しない
+    runner: mac        # 自宅の Mac で確認する（GitHub からはボット対策で止められる。Mac からは読めた）
 
   - name: 【Yahoo】山崎12年      # 必須。通知のタイトルになる。重複不可
     type: yahoo_search                     # 必須
@@ -165,7 +164,7 @@ products:
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
     runner: mac      # 自宅の Mac で確認する
-    enabled: false   # Mac で読めるか試すまで停止中（GitHub からは応答がなかった）
+    enabled: false   # GitHub からも自宅の Mac からも応答がない（遮断されている）ため停止中
 
   - name: 【抽選】アピタ・ピアゴ 山崎・白州
     type: page
