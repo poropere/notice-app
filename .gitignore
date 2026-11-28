@@ -1,0 +1,9 @@
+# Mac で動かすときに Mac の中だけに置くもの（GitHub には送らない）
+.venv/
+mac/config.env
+mac/logs/
+state-mac.json
+
+__pycache__/
+*.pyc
+.DS_Store

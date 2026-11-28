@@ -30,6 +30,9 @@
 # 商品ごとに変えたいときは interval_minutes: 15 のように指定します（最短 5）。
 #
 # 一時的に止めたい商品は enabled: false を付けます。
+#
+# runner: mac を付けた商品は、GitHub ではなく自宅の Mac が確認します
+# （GitHub のサーバーからは読めない Amazon などのサイト向け）。省略時は GitHub が確認します。
 # ────────────────────────────────────────────────
 
 products:
@@ -39,7 +42,8 @@ products:
     site: amazon
     url: https://www.amazon.co.jp/dp/B00384EZHE
     max_price: 18000
-    enabled: false   # GitHub からはボット対策で毎回止められるため停止中
+    runner: mac      # 自宅の Mac で確認する
+    enabled: false   # Mac で読めるか試すまで停止中（GitHub からはボット対策で毎回止められた）
 
   - name: 【Yahoo】山崎12年      # 必須。通知のタイトルになる。重複不可
     type: yahoo_search                     # 必須
@@ -160,7 +164,8 @@ products:
     url: https://www.biccamera.com/bc/c/sale/special/fukubako/index.html
     available_keywords: ["山崎", "白州"]
     interval_minutes: 30
-    enabled: false   # GitHub からのアクセスは応答がない（遮断されている）ため停止中
+    runner: mac      # 自宅の Mac で確認する
+    enabled: false   # Mac で読めるか試すまで停止中（GitHub からは応答がなかった）
 
   - name: 【抽選】アピタ・ピアゴ 山崎・白州
     type: page

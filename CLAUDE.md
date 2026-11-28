@@ -11,6 +11,11 @@
     GitHub の `schedule` は遅延・不発が多いため、1 時間に 1 回の予備として残しているだけ。
   - cron-job.org 用のアクセスキー（fine-grained PAT、Actions: Read and write のみ）には有効期限がある。期限切れで 5 分ごとの実行が止まる。
 - `state.json` は前回の状態の記録。**ワークフローが自動でコミットするので手で編集しない。**
+- **自宅の Mac でも動かせる**（`mac/notice.sh`。launchd で 5 分ごと）。`runner: mac` の商品だけを Mac が確認し、
+  省略した商品は GitHub が確認する（環境変数 `MONITOR_RUNNER` で切り替え）。
+  Mac は毎回 `git pull` で `products.yml` を取り込むだけで、push はしない。Mac の状態は `state-mac.json`（Git 管理外）。
+  GitHub から読めないサイト（Amazon・ビックカメラ等）を追加するときは `runner: mac` を付ける。
+  Mac 側の dry-run は利用者が Mac で `bash mac/notice.sh dry-run "商品名"` を実行する必要がある（GitHub の dry-run では Mac 担当は確認されない）。
 - Secrets: `NTFY_TOPIC`, `YAHOO_APP_ID`（登録済み）。楽天 API は未発行（楽天の管理画面がメンテナンス中で発行不可）。
 - リポジトリは **Public**（Actions を無料・無制限で使うため。Private だと月 2,000 分を超える）。
 
@@ -38,8 +43,8 @@
 
 | サイト | 理由 |
 |---|---|
-| Amazon | GitHub のサーバーからは毎回ボット対策の画面が返る |
-| ビックカメラ.com | GitHub からのアクセスに応答しない（遮断） |
+| Amazon | GitHub のサーバーからは毎回ボット対策の画面が返る（`runner: mac` で自宅の Mac から試す予定） |
+| ビックカメラ.com | GitHub からのアクセスに応答しない（遮断）（同上） |
 | 東急百貨店の抽選ページ | 受付中／終了の表示が JavaScript で切り替わり、文字で判定できない |
 | ポケモンセンターオンライン | ボット対策が厳しく、読み取れない可能性が高い（未検証） |
 | あみあみ | GitHub からのアクセスは 403（拒否）が返る（2026/11 dry-run で確認） |

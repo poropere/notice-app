@@ -154,6 +154,7 @@ Yahoo の API には「新着順」の並び替えがないため、検索結果
 | `type` | | `page` / `rakuten_search` / `yahoo_search`（省略時は `page`） |
 | `enabled` | | `false` にすると監視を止める |
 | `interval_minutes` | | 確認間隔（分）。最短 5。省略時は 5（Amazon のページだけ 30） |
+| `runner` | | `mac` にすると自宅の Mac が確認する（GitHub では確認しない）。省略時は GitHub |
 
 **タイプ別**（✅ 必須　○ 任意　△ custom ではどちらか一方が必須　空欄 = 使えない）
 
@@ -213,6 +214,54 @@ iPhone に Amazon・楽天市場・Yahoo!ショッピングのアプリが入っ
 
 ---
 
+## 自宅の Mac でも監視する（GitHub から読めないサイト用）
+
+Amazon やビックカメラは GitHub のサーバーからのアクセスを止めるため、自宅の Mac から確認します。
+`products.yml` で `runner: mac` を付けた商品だけを Mac が確認し、それ以外はこれまでどおり GitHub が確認します
+（同じ通知が 2 回届くことはありません）。
+
+- 監視対象の一覧は GitHub の `products.yml` のままです。Mac は毎回最新を取り込むので、iPhone からの追加もそのまま反映されます。
+- Mac 側の状態（`state-mac.json`）・通知先の設定（`mac/config.env`）・記録（`mac/logs/`）は Mac の中だけに保存され、GitHub には送られません。
+- Claude の使用量はかかりません（普通のプログラムとして動きます）。
+
+### 準備（最初に 1 回・約 15 分）
+
+Mac の **ターミナル**（アプリケーション → ユーティリティ）で、1 行ずつ実行します。
+
+```bash
+xcode-select --install          # git と Python を入れる（入っていれば「already installed」と出る）
+cd ~
+git clone https://github.com/poropere/notice-app.git
+cd ~/notice-app
+bash mac/notice.sh setup        # Python の準備と、ntfy のトピック名の入力
+bash mac/notice.sh test         # iPhone にテスト通知が届くか確認
+```
+
+> フォルダは **ホームフォルダ直下（`~/notice-app`）** に置いてください。
+> 書類・デスクトップの中に置くと、macOS の保護機能で自動実行が止められることがあります。
+
+### 読めるか試す → 自動監視を始める
+
+```bash
+bash mac/notice.sh dry-run "【Amazon】山崎12年"   # 1 件だけ試す（通知・保存はしない）
+bash mac/notice.sh start                         # 5 分ごとの自動監視を開始
+bash mac/notice.sh status                        # 動いているかと、直近の結果を表示
+bash mac/notice.sh stop                          # 止める
+```
+
+`dry-run` で「判定: 購入可能／購入不可」と出れば読めています。「ボット対策の画面」「取得失敗」と出る場合は Mac からも読めません。
+読めた商品は `products.yml` で `enabled: false` の行を消すと、次回から Mac が監視します。
+
+### Mac の設定で気をつけること
+
+- **電源アダプタをつないだまま** にします。`start` すると、監視中はスリープしないように自動で設定されます（画面は消えて構いません）。
+  ノート型はふたを閉じるとスリープするので、開けたままにしてください。
+- 停電・アップデートで再起動したときに監視が再開するよう、**システム設定 → ユーザとグループ → 自動ログイン** をオンにしておくと安心です
+  （FileVault を使っている場合は自動ログインできないので、再起動後に一度ログインしてください）。
+- **VPN は使わないでください。** 自宅回線のほうがブロックされにくく、VPN は接続が切れて取りこぼしの原因になります。
+
+---
+
 ## 注意点
 
 - **Amazon はボット対策が強い** ため、GitHub のサーバーからのアクセスが確認画面（CAPTCHA）で止められることがあります。
@@ -237,3 +286,4 @@ iPhone に Amazon・楽天市場・Yahoo!ショッピングのアプリが入っ
 | `monitor.py` | 監視と通知を行うスクリプト |
 | `.github/workflows/monitor.yml` | 5 分ごとの自動実行設定 |
 | `state.json` | 前回の状態（自動で作成・更新されます） |
+| `mac/notice.sh` | 自宅の Mac で動かすための操作（準備・開始・停止・確認） |

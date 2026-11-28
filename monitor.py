@@ -4,8 +4,13 @@
     python monitor.py            # 監視を実行（変化があれば通知し、state.json を更新）
     python monitor.py --dry-run  # 判定結果を表示するだけ（通知も保存もしない）
     python monitor.py --test     # テスト通知を 1 件送る
+    python monitor.py --dry-run --only "商品名"
+                                 # 1 件だけ試す（enabled: false や担当外の商品も対象）
 
 環境変数:
+    MONITOR_RUNNER      どこで動いているか（github / mac。省略時 github）。
+                        products.yml の runner: が一致する商品だけを確認する
+    STATE_FILE          状態ファイルの名前（省略時 state.json。Mac では state-mac.json）
     NTFY_TOPIC          通知先の ntfy トピック名（必須）
     NTFY_SERVER         ntfy サーバー（省略時 https://ntfy.sh）
     RAKUTEN_APP_ID      楽天ウェブサービスのアプリID（rakuten_search を使う場合）
@@ -31,7 +36,12 @@ from bs4 import BeautifulSoup
 
 BASE_DIR = Path(__file__).resolve().parent
 PRODUCTS_FILE = BASE_DIR / "products.yml"
-STATE_FILE = BASE_DIR / "state.json"
+# Mac と GitHub で別々の状態ファイルを使う（同じファイルを取り合わないように）
+STATE_FILE = BASE_DIR / (os.environ.get("STATE_FILE") or "state.json")
+
+# 監視を担当する場所。products.yml の runner: と一致する商品だけを確認する
+RUNNERS = ("github", "mac")
+DEFAULT_RUNNER = "github"
 
 DEFAULT_RAKUTEN_ENDPOINT = (
     "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601"
@@ -131,7 +141,7 @@ CAPTCHA_MARKERS = [
 # --------------------------------------------------------------------------
 
 # type ごとに使えるプロパティ。これ以外を書くと警告を出す（書き間違いに気づけるように）。
-COMMON_KEYS = {"name", "type", "enabled", "interval_minutes"}
+COMMON_KEYS = {"name", "type", "enabled", "interval_minutes", "runner"}
 ALLOWED_KEYS = {
     "page": COMMON_KEYS | {
         "url", "site", "open_url", "message",
@@ -162,7 +172,11 @@ def as_list(value, split_spaces: bool = False) -> list[str]:
     return [str(v) for v in value]
 
 
-def load_products() -> list[dict]:
+def runner_of(product: dict) -> str:
+    return str(product.get("runner") or DEFAULT_RUNNER).strip().lower()
+
+
+def load_products(include_disabled: bool = False) -> list[dict]:
     with PRODUCTS_FILE.open(encoding="utf-8-sig") as f:
         text = f.read()
     # 全角スペースは YAML の区切りとして扱われず、「# コメント」が値に混ざってしまうため
@@ -190,7 +204,12 @@ def load_products() -> list[dict]:
         missing = REQUIRED_KEYS[kind] - set(p)
         if missing:
             print(f"⚠ {p['name']}: 必須の項目がありません: {', '.join(sorted(missing))}")
+        if runner_of(p) not in RUNNERS:
+            print(f"⚠ {p['name']}: runner は {' / '.join(RUNNERS)} のどれかにしてください"
+                  f"（{p.get('runner')!r} はどこでも確認されません）")
 
+    if include_disabled:
+        return products
     return [p for p in products if p.get("enabled", True)]
 
 
@@ -605,7 +624,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="通知・保存をしない")
     parser.add_argument("--test", action="store_true", help="テスト通知を送る")
     parser.add_argument("--url", help="テスト通知をタップしたときに開く URL")
+    parser.add_argument("--only", metavar="NAME",
+                        help="この名前の商品だけを試す（--dry-run と一緒に使う）")
     args = parser.parse_args()
+    if args.only and not args.dry_run:
+        parser.error("--only は --dry-run と一緒に使ってください")
 
     if args.test:
         if args.url:
@@ -616,7 +639,17 @@ def main() -> int:
                tags=["white_check_mark"])
         return 0
 
-    products = load_products()
+    runner = (os.environ.get("MONITOR_RUNNER") or DEFAULT_RUNNER).strip().lower()
+    if args.only:
+        # 試しに 1 件だけ確認する（停止中・担当外の商品も対象にする）
+        products = [p for p in load_products(include_disabled=True)
+                    if p.get("name") == args.only]
+        if not products:
+            print(f"「{args.only}」という name の商品が products.yml にありません")
+            return 1
+    else:
+        products = [p for p in load_products() if runner_of(p) == runner]
+    print(f"実行場所: {runner} / 対象 {len(products)} 件 / 状態ファイル: {STATE_FILE.name}")
     state = load_state()
 
     now = time.time()
